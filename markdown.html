@@ -21,22 +21,32 @@
 
   .content { flex: 1; min-height: 0; padding: 30px 10px 4px; }
   #editorRoot, #viewerRoot { height: 100%; }
-  #viewerRoot { overflow: auto; padding: 0 6px; }
+  #viewerRoot { overflow-y: auto; padding: 0 6px; }
 
   body.mode-view #editorRoot { display: none; }
   body:not(.mode-view) #viewerRoot { display: none; }
 
   .toastui-editor-contents { direction: rtl; text-align: right; font-size: 15px; font-family: -apple-system, "Segoe UI", Arial, sans-serif; }
   .toastui-editor-contents pre, .toastui-editor-contents code { direction: ltr; text-align: left; }
-  .ProseMirror { direction: rtl; }
 
-  /* סרגל העיצוב העליון של העורך — גלילה אופקית במקום שבירה */
+  /* המיכל הנגלל נשאר LTR כדי שפס הגלילה יהיה בצד ימין,
+     וכל בלוק בתוכו מוצג RTL */
+  .ProseMirror { direction: ltr; overflow-y: auto; scrollbar-width: thin; }
+  .ProseMirror::-webkit-scrollbar { width: 7px; }
+  .ProseMirror::-webkit-scrollbar-thumb { background: #d3d3d0; border-radius: 4px; }
+
+  /* תחושת "בלוקים" כמו בנושן: כל בלוק עליון מודגש קלות בריחוף */
+  .ProseMirror > * { direction: rtl; text-align: right; padding: 3px 6px; border-radius: 4px; }
+  .ProseMirror > *:hover { background: rgba(55, 53, 47, .045); }
+  .ProseMirror > pre { direction: ltr; text-align: left; }
+
+  /* סרגל העיצוב העליון — גלילה אופקית במקום שבירה */
   .toastui-editor-defaultUI-toolbar { flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: thin; }
   .toastui-editor-defaultUI-toolbar::-webkit-scrollbar { height: 4px; }
   .toastui-editor-defaultUI-toolbar::-webkit-scrollbar-thumb { background: #d3d3d0; border-radius: 2px; }
   .toastui-editor-toolbar-group { flex-shrink: 0 !important; }
 
-  /* הסרגל התחתון — גלילה אופקית במקום שבירה */
+  /* הסרגל התחתון — גלילה אופקית */
   .toolbar {
     display: flex; gap: 6px; align-items: center;
     flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
@@ -75,7 +85,6 @@
   #showBtn:hover { opacity: 1; }
   body.toolbar-hidden #showBtn { display: flex; }
 
-  /* ידית בלוק */
   #blockHandle { position: fixed; z-index: 60; display: none; }
   #blockHandle button {
     background: #fff; color: #9b9a97;
@@ -102,7 +111,6 @@
   #bhMenu button.danger { color: #c4554d; }
   #slashMenu .hint { font-size: 11px; color: #9b9a97; padding: 4px 10px 2px; }
 
-  /* קו היעד בזמן גרירה */
   #dropLine {
     position: fixed; display: none; height: 3px; border-radius: 2px;
     background: #2383e2; z-index: 65; pointer-events: none;
@@ -140,15 +148,40 @@
 
 <script src="storage.js"></script>
 <script>
+  // =====================================================
+  // 1) כל הרכיבים מוגדרים קודם כל דבר —
+  // הבאג בגרסה הקודמת: שימוש ברכיב לפני הגדרתו
+  // הפיל את כל הסקריפט.
+  // =====================================================
   const docNameInput = document.getElementById("docName");
   const saveStatus = document.getElementById("saveStatus");
+  const viewerRootEl = document.getElementById("viewerRoot");
+  const blockHandle = document.getElementById("blockHandle");
+  const bhBtn = document.getElementById("bhBtn");
+  const bhMenu = document.getElementById("bhMenu");
+  const slashMenu = document.getElementById("slashMenu");
+  const dropLine = document.getElementById("dropLine");
   const modeButtons = {
     view: document.getElementById("viewBtn"),
     edit: document.getElementById("editBtn"),
     source: document.getElementById("sourceBtn"),
   };
 
-  // --- טעינת המסמך ---
+  let currentMode = null;
+  let hoveredBlock = null;
+  let dragBlock = null;
+  let dropTarget = null;
+  let dropWhere = "below";
+  let slashOpen = false;
+  let slashIndex = 0;
+  let saveTimer = null;
+
+  // אם בכל זאת תקרה שגיאה — נראה אותה בסרגל במקום לסבול בשקט
+  window.addEventListener("error", (e) => {
+    if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + e.message;
+  });
+
+  // ===== טעינת המסמך =====
   const params = new URLSearchParams(location.search);
   let docId = params.get("id");
   let doc = docId ? getDoc(docId) : null;
@@ -159,7 +192,7 @@
   }
   docNameInput.value = doc.name;
 
-  // --- העורך ---
+  // ===== העורך והתצוגה =====
   const editor = new toastui.Editor({
     el: document.getElementById("editorRoot"),
     height: "100%",
@@ -180,7 +213,7 @@
   });
 
   const viewer = toastui.Editor.factory({
-    el: document.getElementById("viewerRoot"),
+    el: viewerRootEl,
     viewer: true,
     initialValue: doc.content || "",
     usageStatistics: false,
@@ -191,85 +224,7 @@
     viewer.setMarkdown(md.trim() ? md : "*המסמך ריק — עבור למצב ✏️ עריכה כדי לכתוב*");
   }
 
-  // --- מצבים ---
-  let currentMode = null;
-  function setMode(mode) {
-    currentMode = mode;
-    document.body.classList.remove("mode-view", "mode-edit", "mode-source");
-    document.body.classList.add("mode-" + mode);
-    for (const key in modeButtons) {
-      modeButtons[key].classList.toggle("active", key === mode);
-    }
-    hideHandle(); hideMenu(); closeSlash();
-    if (mode === "view") {
-      refreshViewer();
-    } else if (mode === "edit") {
-      editor.changeMode("wysiwyg", true);
-    } else {
-      editor.changeMode("markdown", true);
-    }
-    try { localStorage.setItem("dov-widgets-ui-mode", mode); } catch (e) {}
-  }
-
-  let savedMode = null;
-  try { savedMode = localStorage.getItem("dov-widgets-ui-mode"); } catch (e) {}
-  setMode(savedMode || ((doc.content || "").trim() ? "view" : "edit"));
-
-  modeButtons.view.addEventListener("click", () => setMode("view"));
-  modeButtons.edit.addEventListener("click", () => { setMode("edit"); editor.focus(); });
-  modeButtons.source.addEventListener("click", () => { setMode("source"); editor.focus(); });
-
-  document.getElementById("viewerRoot").addEventListener("dblclick", () => {
-    setMode("edit");
-    editor.focus();
-  });
-
-  // --- שמירה אוטומטית ---
-  let saveTimer = null;
-  editor.on("change", () => {
-    saveStatus.textContent = "שומר...";
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      updateDoc(docId, { content: editor.getMarkdown() });
-      saveStatus.textContent = "נשמר ✓";
-    }, 400);
-  });
-
-  docNameInput.addEventListener("change", () => {
-    const name = docNameInput.value.trim();
-    if (name) {
-      updateDoc(docId, { name: name });
-    } else {
-      docNameInput.value = getDoc(docId).name;
-    }
-    saveStatus.textContent = "נשמר ✓";
-  });
-
-  function setToolbarHidden(hidden) {
-    document.body.classList.toggle("toolbar-hidden", hidden);
-    try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
-  }
-  document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
-  document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
-  try {
-    if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
-  } catch (e) {}
-
-  document.getElementById("downloadBtn").addEventListener("click", () => {
-    const safeName = (getDoc(docId).name || "note").replace(/[\\/:*?"<>|]/g, "-");
-    const blob = new Blob([editor.getMarkdown()], { type: "text/markdown" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = safeName + ".md";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
-
-  // ============================================
-  // חיבור למנוע הפנימי (ProseMirror) של העורך —
-  // כל פעולות הבלוקים עוברות דרך המנוע עצמו,
-  // ולא דרך תעלולי DOM — הרבה יותר אמין.
-  // ============================================
+  // ===== עזרי המנוע הפנימי (ProseMirror) =====
   function getView() {
     try {
       return editor.wwEditor && editor.wwEditor.view ? editor.wwEditor.view : null;
@@ -296,7 +251,6 @@
     } catch (e) {}
     return tr;
   }
-
   function deleteBlockEl(el) {
     const view = getView();
     const r = view && blockRange(view, el);
@@ -341,16 +295,75 @@
     view.dispatch(tr);
   }
 
-  // ===== ידית הבלוק =====
-  const blockHandle = document.getElementById("blockHandle");
-  const bhBtn = document.getElementById("bhBtn");
-  const bhMenu = document.getElementById("bhMenu");
-  const dropLine = document.getElementById("dropLine");
-  let hoveredBlock = null;
-
+  // ===== מצבי תצוגה =====
   function hideHandle() { blockHandle.style.display = "none"; }
   function hideMenu() { bhMenu.style.display = "none"; }
+  function closeSlash() {
+    slashMenu.style.display = "none";
+    slashOpen = false;
+  }
 
+  function setMode(mode) {
+    currentMode = mode;
+    document.body.classList.remove("mode-view", "mode-edit", "mode-source");
+    document.body.classList.add("mode-" + mode);
+    for (const key in modeButtons) {
+      modeButtons[key].classList.toggle("active", key === mode);
+    }
+    hideHandle(); hideMenu(); closeSlash();
+    if (mode === "view") {
+      refreshViewer();
+    } else if (mode === "edit") {
+      editor.changeMode("wysiwyg", true);
+    } else {
+      editor.changeMode("markdown", true);
+    }
+    try { localStorage.setItem("dov-widgets-ui-mode", mode); } catch (e) {}
+  }
+
+  modeButtons.view.addEventListener("click", () => setMode("view"));
+  modeButtons.edit.addEventListener("click", () => { setMode("edit"); editor.focus(); });
+  modeButtons.source.addEventListener("click", () => { setMode("source"); editor.focus(); });
+  viewerRootEl.addEventListener("dblclick", () => { setMode("edit"); editor.focus(); });
+
+  // ===== שמירה, שם, הורדה, הסתרת סרגל =====
+  editor.on("change", () => {
+    saveStatus.textContent = "שומר...";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      updateDoc(docId, { content: editor.getMarkdown() });
+      saveStatus.textContent = "נשמר ✓";
+    }, 400);
+  });
+
+  docNameInput.addEventListener("change", () => {
+    const name = docNameInput.value.trim();
+    if (name) {
+      updateDoc(docId, { name: name });
+    } else {
+      docNameInput.value = getDoc(docId).name;
+    }
+    saveStatus.textContent = "נשמר ✓";
+  });
+
+  function setToolbarHidden(hidden) {
+    document.body.classList.toggle("toolbar-hidden", hidden);
+    try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
+  }
+  document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
+  document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
+
+  document.getElementById("downloadBtn").addEventListener("click", () => {
+    const safeName = (getDoc(docId).name || "note").replace(/[\\/:*?"<>|]/g, "-");
+    const blob = new Blob([editor.getMarkdown()], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = safeName + ".md";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  // ===== ידית בלוק =====
   function positionHandle(block) {
     const rect = block.getBoundingClientRect();
     let left = rect.right + 4;
@@ -384,7 +397,6 @@
   document.addEventListener("scroll", () => { hideHandle(); hideMenu(); closeSlash(); }, true);
   window.addEventListener("resize", () => { hideHandle(); hideMenu(); closeSlash(); });
 
-  // לא גונבים פוקוס מהעורך בלחיצה על הידית
   bhBtn.addEventListener("mousedown", (e) => e.preventDefault());
 
   bhBtn.addEventListener("click", (e) => {
@@ -418,10 +430,6 @@
   });
 
   // ===== גרירת בלוקים =====
-  let dragBlock = null;
-  let dropTarget = null;
-  let dropWhere = "below";
-
   bhBtn.addEventListener("dragstart", (e) => {
     if (!hoveredBlock) { e.preventDefault(); return; }
     dragBlock = hoveredBlock;
@@ -468,7 +476,6 @@
   }
 
   // ===== תפריט לוכסן (/) =====
-  const slashMenu = document.getElementById("slashMenu");
   const slashItems = [
     { label: "🔤 כותרת 1", cmd: "heading", level: 1 },
     { label: "🔣 כותרת 2", cmd: "heading", level: 2 },
@@ -481,8 +488,6 @@
     { label: "💻 בלוק קוד", cmd: "codeBlock" },
     { label: "📊 טבלה 3×3", cmd: "addTable" },
   ];
-  let slashOpen = false;
-  let slashIndex = 0;
 
   function renderSlash() {
     slashMenu.innerHTML = "";
@@ -490,7 +495,7 @@
       const btn = document.createElement("button");
       btn.textContent = item.label;
       btn.className = i === slashIndex ? "sel" : "";
-      btn.addEventListener("mousedown", (e) => e.preventDefault());
+      btn.addEventListener("mousedown", (ev) => ev.preventDefault());
       btn.addEventListener("click", () => runSlash(i));
       slashMenu.appendChild(btn);
     });
@@ -530,12 +535,6 @@
     slashOpen = true;
   }
 
-  function closeSlash() {
-    if (!slashOpen && slashMenu.style.display !== "flex") return;
-    slashMenu.style.display = "none";
-    slashOpen = false;
-  }
-
   function runSlash(i) {
     const item = slashItems[i];
     closeSlash();
@@ -544,7 +543,9 @@
       if (item.cmd === "heading") editor.exec("heading", { level: item.level });
       else if (item.cmd === "addTable") editor.exec("addTable", { rowCount: 3, columnCount: 3 });
       else editor.exec(item.cmd);
-    } catch (e) {}
+    } catch (e) {
+      saveStatus.textContent = "⚠️ הפקודה לא נתמכה";
+    }
   }
 
   document.addEventListener("keydown", (e) => {
@@ -577,6 +578,18 @@
     e.stopPropagation();
     openSlash();
   }, true);
+
+  // =====================================================
+  // 2) אתחול — רק אחרי שהכל הוגדר (התיקון המרכזי!)
+  // =====================================================
+  let savedMode = null;
+  try { savedMode = localStorage.getItem("dov-widgets-ui-mode"); } catch (e) {}
+  if (savedMode !== "view" && savedMode !== "edit" && savedMode !== "source") savedMode = null;
+  setMode(savedMode || ((doc.content || "").trim() ? "view" : "edit"));
+
+  try {
+    if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
+  } catch (e) {}
 </script>
 </body>
 </html>
