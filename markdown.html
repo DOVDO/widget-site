@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Markdown Widget</title>
-<!-- Toast UI Editor: עורך WYSIWYG שכותב Markdown מאחורי הקלעים -->
 <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/tui-color-picker/latest/tui-color-picker.min.css">
 <link rel="stylesheet" href="https://uicdn.toast.com/editor-plugin-color-syntax/latest/toastui-editor-plugin-color-syntax.min.css">
@@ -31,17 +30,27 @@
   .toastui-editor-contents pre, .toastui-editor-contents code { direction: ltr; text-align: left; }
   .ProseMirror { direction: rtl; }
 
+  /* סרגל העיצוב העליון של העורך — גלילה אופקית במקום שבירה */
+  .toastui-editor-defaultUI-toolbar { flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden !important; scrollbar-width: thin; }
+  .toastui-editor-defaultUI-toolbar::-webkit-scrollbar { height: 4px; }
+  .toastui-editor-defaultUI-toolbar::-webkit-scrollbar-thumb { background: #d3d3d0; border-radius: 2px; }
+  .toastui-editor-toolbar-group { flex-shrink: 0 !important; }
+
+  /* הסרגל התחתון — גלילה אופקית במקום שבירה */
   .toolbar {
-    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
     margin: 6px 10px 10px; padding: 6px 10px;
     border: 1px solid #e9e9e7; border-radius: 10px; background: #fff;
     box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }
+  .toolbar::-webkit-scrollbar { height: 4px; }
+  .toolbar::-webkit-scrollbar-thumb { background: #d3d3d0; border-radius: 2px; }
   .toolbar a { text-decoration: none; font-size: 15px; flex-shrink: 0; }
   #docName {
     border: 1px solid transparent; border-radius: 6px; background: transparent;
     font-size: 13.5px; font-weight: 600; color: #37352f;
-    padding: 3px 8px; min-width: 50px; max-width: 180px; flex: 1;
+    padding: 3px 8px; min-width: 60px; max-width: 180px; flex: 1 1 60px;
     direction: rtl;
   }
   #docName:hover { border-color: #d3d3d0; }
@@ -49,11 +58,11 @@
   .toolbar button {
     border: 1px solid #d3d3d0; background: #fff; color: #37352f;
     border-radius: 6px; padding: 4px 9px; font-size: 12.5px; cursor: pointer;
-    flex-shrink: 0;
+    flex-shrink: 0; white-space: nowrap;
   }
   .toolbar button:hover { background: #f1f1ef; }
   .toolbar button.active { background: #37352f; color: #fff; border-color: #37352f; }
-  #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; }
+  #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; white-space: nowrap; }
 
   body.toolbar-hidden .toolbar { display: none; }
   #showBtn {
@@ -66,33 +75,38 @@
   #showBtn:hover { opacity: 1; }
   body.toolbar-hidden #showBtn { display: flex; }
 
-  /* ===== ידית בלוק בסגנון נושן ===== */
-  #blockHandle {
-    position: fixed; z-index: 60; display: none;
-  }
+  /* ידית בלוק */
+  #blockHandle { position: fixed; z-index: 60; display: none; }
   #blockHandle button {
-    border: none; background: #fff; color: #9b9a97;
+    background: #fff; color: #9b9a97;
     border: 1px solid #e9e9e7; border-radius: 6px;
-    width: 24px; height: 24px; cursor: pointer; font-size: 13px;
+    width: 24px; height: 24px; cursor: grab; font-size: 13px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08);
     display: flex; align-items: center; justify-content: center;
   }
   #blockHandle button:hover { background: #f1f1ef; color: #37352f; }
 
-  #bhMenu {
+  #bhMenu, #slashMenu {
     position: fixed; z-index: 70; display: none;
-    flex-direction: column; min-width: 160px;
+    flex-direction: column; min-width: 170px;
     background: #fff; border: 1px solid #e9e9e7; border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 4px;
-    direction: rtl;
+    direction: rtl; max-height: 60vh; overflow-y: auto;
   }
-  #bhMenu button {
+  #bhMenu button, #slashMenu button {
     border: none; background: none; text-align: right;
     padding: 7px 10px; font-size: 13.5px; cursor: pointer; border-radius: 6px;
-    color: #37352f; font-family: inherit;
+    color: #37352f; font-family: inherit; white-space: nowrap;
   }
-  #bhMenu button:hover { background: #f1f1ef; }
+  #bhMenu button:hover, #slashMenu button:hover, #slashMenu button.sel { background: #f1f1ef; }
   #bhMenu button.danger { color: #c4554d; }
+  #slashMenu .hint { font-size: 11px; color: #9b9a97; padding: 4px 10px 2px; }
+
+  /* קו היעד בזמן גרירה */
+  #dropLine {
+    position: fixed; display: none; height: 3px; border-radius: 2px;
+    background: #2383e2; z-index: 65; pointer-events: none;
+  }
 </style>
 </head>
 <body class="mode-view">
@@ -106,21 +120,23 @@
     <a href="index.html" title="כל המסמכים">🏠</a>
     <input id="docName" title="שם המסמך — לחץ כדי לערוך">
     <button id="viewBtn" title="קריאה נקייה">👁️ צפייה</button>
-    <button id="editBtn" title="עריכה חזותית כמו בנושן">✏️ עריכה</button>
+    <button id="editBtn" title="עריכה חזותית">✏️ עריכה</button>
     <button id="sourceBtn" title="עריכת קוד ה-Markdown">&lt;/&gt; מקור</button>
     <button id="downloadBtn" title="הורדת קובץ Markdown">⬇️ .md</button>
     <span id="saveStatus"></span>
-    <button id="hideBtn" title="הסתרת הסרגל — כתיבה נקייה">⌄</button>
+    <button id="hideBtn" title="הסתרת הסרגל">⌄</button>
   </div>
   <button id="showBtn" title="הצגת הסרגל">⌃</button>
 
-  <!-- ידית הבלוק והתפריט שלה -->
-  <div id="blockHandle"><button id="bhBtn" title="פעולות בלוק">⋮⋮</button></div>
+  <div id="blockHandle"><button id="bhBtn" draggable="true" title="לחיצה לתפריט, גרירה להזזה">⋮⋮</button></div>
   <div id="bhMenu">
     <button data-act="above">⬆️ הוסף בלוק מעל</button>
     <button data-act="below">⬇️ הוסף בלוק מתחת</button>
+    <button data-act="duplicate">📄 שכפל את הבלוק</button>
     <button data-act="delete" class="danger">🗑️ מחק את הבלוק</button>
   </div>
+  <div id="slashMenu"></div>
+  <div id="dropLine"></div>
 
 <script src="storage.js"></script>
 <script>
@@ -143,7 +159,7 @@
   }
   docNameInput.value = doc.name;
 
-  // --- העורך — עם כל הכלים האפשריים בסרגל ---
+  // --- העורך ---
   const editor = new toastui.Editor({
     el: document.getElementById("editorRoot"),
     height: "100%",
@@ -152,7 +168,7 @@
     usageStatistics: false,
     hideModeSwitch: true,
     autofocus: false,
-    placeholder: "כתוב כאן...",
+    placeholder: "כתוב כאן... (הקלד / בשורה ריקה לתפריט בלוקים)",
     toolbarItems: [
       ["heading", "bold", "italic", "strike"],
       ["hr", "quote"],
@@ -163,7 +179,6 @@
     plugins: [toastui.Editor.plugin.colorSyntax],
   });
 
-  // --- התצוגה (קריאה בלבד) ---
   const viewer = toastui.Editor.factory({
     el: document.getElementById("viewerRoot"),
     viewer: true,
@@ -185,7 +200,7 @@
     for (const key in modeButtons) {
       modeButtons[key].classList.toggle("active", key === mode);
     }
-    hideHandle(); hideMenu();
+    hideHandle(); hideMenu(); closeSlash();
     if (mode === "view") {
       refreshViewer();
     } else if (mode === "edit") {
@@ -220,7 +235,6 @@
     }, 400);
   });
 
-  // --- עריכת שם ---
   docNameInput.addEventListener("change", () => {
     const name = docNameInput.value.trim();
     if (name) {
@@ -231,7 +245,6 @@
     saveStatus.textContent = "נשמר ✓";
   });
 
-  // --- הסתרת הסרגל ---
   function setToolbarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
     try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
@@ -242,7 +255,6 @@
     if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
   } catch (e) {}
 
-  // --- הורדת .md ---
   document.getElementById("downloadBtn").addEventListener("click", () => {
     const safeName = (getDoc(docId).name || "note").replace(/[\\/:*?"<>|]/g, "-");
     const blob = new Blob([editor.getMarkdown()], { type: "text/markdown" });
@@ -254,17 +266,87 @@
   });
 
   // ============================================
-  // ידית בלוק בסגנון נושן:
-  // ריחוף על בלוק במצב עריכה מציג ⋮⋮ בצד הבלוק.
-  // לחיצה פותחת תפריט: הוספה מעל / מתחת / מחיקה.
+  // חיבור למנוע הפנימי (ProseMirror) של העורך —
+  // כל פעולות הבלוקים עוברות דרך המנוע עצמו,
+  // ולא דרך תעלולי DOM — הרבה יותר אמין.
   // ============================================
-  const blockHandle = document.getElementById("blockHandle");
-  const bhMenu = document.getElementById("bhMenu");
-  let hoveredBlock = null;
-
+  function getView() {
+    try {
+      return editor.wwEditor && editor.wwEditor.view ? editor.wwEditor.view : null;
+    } catch (e) { return null; }
+  }
   function getProseMirror() {
     return document.querySelector("#editorRoot .ProseMirror");
   }
+  function blockRange(view, el) {
+    try {
+      const inner = view.posAtDOM(el, 0);
+      const $pos = view.state.doc.resolve(inner);
+      if ($pos.depth < 1) return null;
+      return { before: $pos.before(1), after: $pos.after(1) };
+    } catch (e) { return null; }
+  }
+  function blockNode(view, r) {
+    return view.state.doc.resolve(r.before).nodeAfter;
+  }
+  function placeCaretAt(view, tr, pos) {
+    try {
+      const SelClass = view.state.selection.constructor;
+      tr.setSelection(SelClass.near(tr.doc.resolve(pos)));
+    } catch (e) {}
+    return tr;
+  }
+
+  function deleteBlockEl(el) {
+    const view = getView();
+    const r = view && blockRange(view, el);
+    if (view && r) {
+      view.dispatch(view.state.tr.delete(r.before, r.after));
+    } else if (el.parentElement) {
+      el.remove();
+    }
+  }
+  function insertParagraphAt(el, where) {
+    const view = getView();
+    const r = view && blockRange(view, el);
+    if (!view || !r) return;
+    const para = view.state.schema.nodes.paragraph.createAndFill();
+    if (!para) return;
+    const pos = where === "above" ? r.before : r.after;
+    let tr = view.state.tr.insert(pos, para);
+    tr = placeCaretAt(view, tr, pos + 1);
+    view.dispatch(tr);
+    view.focus();
+  }
+  function duplicateBlockEl(el) {
+    const view = getView();
+    const r = view && blockRange(view, el);
+    if (!view || !r) return;
+    const node = blockNode(view, r);
+    if (!node) return;
+    view.dispatch(view.state.tr.insert(r.after, node));
+  }
+  function moveBlockEl(srcEl, targetEl, where) {
+    const view = getView();
+    if (!view || srcEl === targetEl) return;
+    const src = blockRange(view, srcEl);
+    const tgt = blockRange(view, targetEl);
+    if (!src || !tgt) return;
+    const node = blockNode(view, src);
+    if (!node) return;
+    let insertPos = where === "above" ? tgt.before : tgt.after;
+    let tr = view.state.tr.delete(src.before, src.after);
+    insertPos = tr.mapping.map(insertPos);
+    tr = tr.insert(insertPos, node);
+    view.dispatch(tr);
+  }
+
+  // ===== ידית הבלוק =====
+  const blockHandle = document.getElementById("blockHandle");
+  const bhBtn = document.getElementById("bhBtn");
+  const bhMenu = document.getElementById("bhMenu");
+  const dropLine = document.getElementById("dropLine");
+  let hoveredBlock = null;
 
   function hideHandle() { blockHandle.style.display = "none"; }
   function hideMenu() { bhMenu.style.display = "none"; }
@@ -278,86 +360,223 @@
     blockHandle.style.display = "block";
   }
 
-  document.addEventListener("mousemove", (e) => {
-    if (currentMode !== "edit") return;
-    // אם העכבר על הידית או התפריט — לא מזיזים כלום
-    if (blockHandle.contains(e.target) || bhMenu.contains(e.target)) return;
+  function topBlockFromPoint(x, y) {
     const pm = getProseMirror();
-    if (!pm) { hideHandle(); return; }
-    let el = e.target;
-    if (!pm.contains(el)) {
-      // מחוץ לעורך — מסתירים (אלא אם התפריט פתוח)
-      if (bhMenu.style.display !== "flex") hideHandle();
-      return;
-    }
-    // מטפסים לבלוק העליון (הילד הישיר של העורך)
+    if (!pm) return null;
+    let el = document.elementFromPoint(x, y);
+    if (!el || !pm.contains(el) || el === pm) return null;
     while (el.parentElement && el.parentElement !== pm) el = el.parentElement;
-    if (el && el.parentElement === pm) {
-      hoveredBlock = el;
-      positionHandle(el);
+    return el && el.parentElement === pm ? el : null;
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    if (currentMode !== "edit" || dragBlock) return;
+    if (blockHandle.contains(e.target) || bhMenu.contains(e.target)) return;
+    const block = topBlockFromPoint(e.clientX, e.clientY);
+    if (block) {
+      hoveredBlock = block;
+      positionHandle(block);
+    } else if (bhMenu.style.display !== "flex") {
+      hideHandle();
     }
   });
 
-  // גלילה או שינוי גודל — מסתירים כדי לא להציג ידית במקום הלא נכון
-  document.addEventListener("scroll", () => { hideHandle(); hideMenu(); }, true);
-  window.addEventListener("resize", () => { hideHandle(); hideMenu(); });
+  document.addEventListener("scroll", () => { hideHandle(); hideMenu(); closeSlash(); }, true);
+  window.addEventListener("resize", () => { hideHandle(); hideMenu(); closeSlash(); });
 
-  // לחיצה על הידית — פותחת את התפריט לידה
-  document.getElementById("bhBtn").addEventListener("click", (e) => {
+  // לא גונבים פוקוס מהעורך בלחיצה על הידית
+  bhBtn.addEventListener("mousedown", (e) => e.preventDefault());
+
+  bhBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!hoveredBlock) return;
     const rect = blockHandle.getBoundingClientRect();
     bhMenu.style.display = "flex";
-    let left = rect.left - 170;
+    let left = rect.left - 180;
     if (left < 4) left = 4;
     let top = rect.top;
-    if (top + 130 > window.innerHeight) top = window.innerHeight - 130;
+    if (top + 160 > window.innerHeight) top = Math.max(window.innerHeight - 160, 4);
     bhMenu.style.top = top + "px";
     bhMenu.style.left = left + "px";
   });
 
-  // לחיצה בכל מקום אחר — סוגרת את התפריט
   document.addEventListener("mousedown", (e) => {
     if (!bhMenu.contains(e.target) && !blockHandle.contains(e.target)) hideMenu();
+    if (!slashMenu.contains(e.target)) closeSlash();
   });
-
-  // --- פעולות התפריט ---
-  function placeCaretIn(el) {
-    const sel = window.getSelection();
-    const r = document.createRange();
-    r.selectNodeContents(el);
-    r.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(r);
-  }
 
   bhMenu.addEventListener("click", (e) => {
     const act = e.target.dataset && e.target.dataset.act;
     if (!act || !hoveredBlock) return;
     const block = hoveredBlock;
-    editor.focus();
-
-    if (act === "delete") {
-      // בוחרים את כל הבלוק ומוחקים — העורך קולט את השינוי ומסתנכרן
-      const sel = window.getSelection();
-      const r = document.createRange();
-      r.selectNode(block);
-      sel.removeAllRanges();
-      sel.addRange(r);
-      let ok = false;
-      try { ok = document.execCommand("delete"); } catch (err) {}
-      if (!ok && block.parentElement) block.remove();
-    } else {
-      const p = document.createElement("p");
-      p.innerHTML = "<br>";
-      block.insertAdjacentElement(act === "above" ? "beforebegin" : "afterend", p);
-      placeCaretIn(p);
-    }
-
+    if (act === "delete") deleteBlockEl(block);
+    else if (act === "duplicate") duplicateBlockEl(block);
+    else insertParagraphAt(block, act);
     hideMenu();
     hideHandle();
     hoveredBlock = null;
   });
+
+  // ===== גרירת בלוקים =====
+  let dragBlock = null;
+  let dropTarget = null;
+  let dropWhere = "below";
+
+  bhBtn.addEventListener("dragstart", (e) => {
+    if (!hoveredBlock) { e.preventDefault(); return; }
+    dragBlock = hoveredBlock;
+    hideMenu();
+    try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+    e.dataTransfer.effectAllowed = "move";
+  });
+
+  document.addEventListener("dragover", (e) => {
+    if (!dragBlock) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const target = topBlockFromPoint(e.clientX, e.clientY);
+    if (!target || target === dragBlock) {
+      dropTarget = null;
+      dropLine.style.display = "none";
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const above = e.clientY < rect.top + rect.height / 2;
+    dropTarget = target;
+    dropWhere = above ? "above" : "below";
+    dropLine.style.display = "block";
+    dropLine.style.top = (above ? rect.top : rect.bottom) - 1.5 + "px";
+    dropLine.style.left = rect.left + "px";
+    dropLine.style.width = rect.width + "px";
+  }, true);
+
+  document.addEventListener("drop", (e) => {
+    if (!dragBlock) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (dropTarget) moveBlockEl(dragBlock, dropTarget, dropWhere);
+    endDrag();
+  }, true);
+
+  document.addEventListener("dragend", () => endDrag(), true);
+
+  function endDrag() {
+    dragBlock = null;
+    dropTarget = null;
+    dropLine.style.display = "none";
+    hideHandle();
+  }
+
+  // ===== תפריט לוכסן (/) =====
+  const slashMenu = document.getElementById("slashMenu");
+  const slashItems = [
+    { label: "🔤 כותרת 1", cmd: "heading", level: 1 },
+    { label: "🔣 כותרת 2", cmd: "heading", level: 2 },
+    { label: "🔡 כותרת 3", cmd: "heading", level: 3 },
+    { label: "• רשימת תבליטים", cmd: "bulletList" },
+    { label: "1⃣ רשימה ממוספרת", cmd: "orderedList" },
+    { label: "☑️ רשימת משימות", cmd: "taskList" },
+    { label: "❝ ציטוט", cmd: "blockQuote" },
+    { label: "➖ קו מפריד", cmd: "hr" },
+    { label: "💻 בלוק קוד", cmd: "codeBlock" },
+    { label: "📊 טבלה 3×3", cmd: "addTable" },
+  ];
+  let slashOpen = false;
+  let slashIndex = 0;
+
+  function renderSlash() {
+    slashMenu.innerHTML = "";
+    slashItems.forEach((item, i) => {
+      const btn = document.createElement("button");
+      btn.textContent = item.label;
+      btn.className = i === slashIndex ? "sel" : "";
+      btn.addEventListener("mousedown", (e) => e.preventDefault());
+      btn.addEventListener("click", () => runSlash(i));
+      slashMenu.appendChild(btn);
+    });
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "↑↓ לניווט · Enter לבחירה · Esc לסגירה";
+    slashMenu.appendChild(hint);
+  }
+
+  function caretViewportRect() {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount) {
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      if (rect && (rect.top || rect.left || rect.width || rect.height)) return rect;
+      const node = sel.anchorNode;
+      const el = node && (node.nodeType === 1 ? node : node.parentElement);
+      if (el) return el.getBoundingClientRect();
+    }
+    return null;
+  }
+
+  function openSlash() {
+    slashIndex = 0;
+    renderSlash();
+    slashMenu.style.display = "flex";
+    const rect = caretViewportRect();
+    let top = rect ? rect.bottom + 6 : 60;
+    let left = rect ? Math.max(rect.left - 170, 4) : 10;
+    slashMenu.style.visibility = "hidden";
+    slashMenu.style.top = "0px";
+    slashMenu.style.left = "0px";
+    const h = slashMenu.offsetHeight;
+    if (top + h > window.innerHeight - 8) top = Math.max((rect ? rect.top : 60) - h - 6, 8);
+    slashMenu.style.top = top + "px";
+    slashMenu.style.left = left + "px";
+    slashMenu.style.visibility = "visible";
+    slashOpen = true;
+  }
+
+  function closeSlash() {
+    if (!slashOpen && slashMenu.style.display !== "flex") return;
+    slashMenu.style.display = "none";
+    slashOpen = false;
+  }
+
+  function runSlash(i) {
+    const item = slashItems[i];
+    closeSlash();
+    editor.focus();
+    try {
+      if (item.cmd === "heading") editor.exec("heading", { level: item.level });
+      else if (item.cmd === "addTable") editor.exec("addTable", { rowCount: 3, columnCount: 3 });
+      else editor.exec(item.cmd);
+    } catch (e) {}
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (slashOpen) {
+      if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation(); closeSlash();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault(); e.stopPropagation();
+        slashIndex = (slashIndex + 1) % slashItems.length; renderSlash();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); e.stopPropagation();
+        slashIndex = (slashIndex - 1 + slashItems.length) % slashItems.length; renderSlash();
+      } else if (e.key === "Enter") {
+        e.preventDefault(); e.stopPropagation(); runSlash(slashIndex);
+      } else if (e.key !== "Shift" && e.key !== "Control" && e.key !== "Alt" && e.key !== "Meta") {
+        closeSlash();
+      }
+      return;
+    }
+    if (e.key !== "/" || currentMode !== "edit") return;
+    const view = getView();
+    if (!view) return;
+    try {
+      if (!view.hasFocus()) return;
+      const sel = view.state.selection;
+      if (!sel.empty) return;
+      if (sel.$from.parent.textContent.trim() !== "") return;
+    } catch (err) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    openSlash();
+  }, true);
 </script>
 </body>
 </html>
