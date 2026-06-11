@@ -4,14 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>גיליון</title>
-<link rel="stylesheet" href="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css">
-<script src="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/assets/iconfont/iconfont.css">
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; }
   html, body {
     height: 100%;
-    /* מונע "זליגת" גלילה החוצה לעמוד הנושן המארח */
-    overscroll-behavior: none;
+    overscroll-behavior: none; /* מונע זליגת גלילה לדף הנושן */
   }
   body {
     font-family: -apple-system, "Segoe UI", Arial, sans-serif;
@@ -19,9 +22,9 @@
     display: flex; flex-direction: column; overflow: hidden;
   }
 
-  .content { flex: 1; min-height: 0; padding: 8px 6px 4px; }
+  .content { flex: 1; min-height: 0; padding: 8px 4px 2px; position: relative; }
   body.chrome-on .content { padding-top: 28px; }
-  #sheetRoot { height: 100%; width: 100%; }
+  #sheetRoot { height: 100%; width: 100%; position: relative; }
 
   .toolbar {
     display: flex; gap: 6px; align-items: center;
@@ -36,7 +39,7 @@
   #docName {
     border: 1px solid transparent; border-radius: 6px; background: transparent;
     font-size: 13.5px; font-weight: 600; color: #37352f;
-    padding: 3px 8px; min-width: 60px; max-width: 180px; flex: 1 1 60px;
+    padding: 3px 8px; min-width: 60px; max-width: 170px; flex: 1 1 60px;
     direction: rtl;
   }
   #docName:hover { border-color: #d3d3d0; }
@@ -48,6 +51,12 @@
   }
   .toolbar button:hover { background: #f1f1ef; }
   .toolbar button.on { background: #37352f; color: #fff; border-color: #37352f; }
+  .zoomGroup { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  #zoomPct {
+    width: 52px; text-align: center; border: 1px solid #d3d3d0; border-radius: 6px;
+    padding: 3px 2px; font-size: 12.5px; direction: ltr;
+  }
+  #zoomPct:focus { outline: none; border-color: #2383e2; }
   #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; white-space: nowrap; }
 
   body.toolbar-hidden .toolbar { display: none; }
@@ -56,7 +65,7 @@
     width: 30px; height: 30px; border-radius: 50%;
     border: 1px solid #d3d3d0; background: #fff; cursor: pointer;
     font-size: 13px; opacity: .35; box-shadow: 0 2px 6px rgba(0,0,0,.1);
-    align-items: center; justify-content: center; z-index: 50;
+    align-items: center; justify-content: center; z-index: 100000;
   }
   #showBtn:hover { opacity: 1; }
   body.toolbar-hidden #showBtn { display: flex; }
@@ -69,11 +78,16 @@
   <div class="toolbar">
     <a href="index.html" title="כל הקבצים">🏠</a>
     <input id="docName" title="שם הגיליון — לחץ כדי לערוך">
-    <button id="chromeBtn" title="הצגת/הסתרת סרגל העיצוב ולשוניות הגיליונות">🎛️ תפריטים</button>
-    <button id="rowNumBtn" title="הצגת/הסתרת מספרי השורות">🔢 מספרי שורות</button>
+    <button id="chromeBtn" title="הצגת/הסתרת סרגל הכלים, שורת הנוסחאות והלשוניות">🎛️ תפריטים</button>
+    <button id="rowNumBtn" title="קביעת רוחב עמודת מספרי השורות">🔢 שורות</button>
+    <span class="zoomGroup">
+      <button id="zoomOut" title="הקטנת תצוגה">➖</button>
+      <input id="zoomPct" value="100" title="אחוז תצוגה — הקלד ערך חופשי (25 עד 400)">
+      <button id="zoomIn" title="הגדלת תצוגה">➕</button>
+    </span>
     <button id="linksBtn" title="היכן הגיליון משובץ בנושן">🔗</button>
     <button id="csvBtn" title="הורדה כ-CSV (נפתח באקסל)">⬇️ CSV</button>
-    <span id="saveStatus"></span>
+    <span id="saveStatus">טוען...</span>
     <button id="hideBtn" title="הסתרת הסרגל">⌄</button>
   </div>
   <button id="showBtn" title="הצגת הסרגל">⌃</button>
@@ -82,8 +96,7 @@
 <script src="links-ui.js"></script>
 <script>
   // תיקון קריטי: מניעת קפיצת דף הנושן המארח.
-  // כשרכיב בתוך ההטמעה מקבל פוקוס, הדפדפן מגלגל את הדף המארח כדי להציג אותו.
-  // כאן אנחנו הופכים כל פוקוס לשקט (preventScroll) ומבטלים scrollIntoView.
+  // כל פוקוס הופך לשקט (preventScroll) ו-scrollIntoView מנוטרל.
   (function () {
     const origFocus = HTMLElement.prototype.focus;
     HTMLElement.prototype.focus = function (opts) {
@@ -97,12 +110,13 @@
   const sheetRoot = document.getElementById("sheetRoot");
   const chromeBtn = document.getElementById("chromeBtn");
   const rowNumBtn = document.getElementById("rowNumBtn");
+  const zoomPct = document.getElementById("zoomPct");
 
   window.addEventListener("error", (e) => {
     if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + e.message;
   });
 
-  // ----- טעינת הגיליון -----
+  // ----- טעינת המסמך -----
   const params = new URLSearchParams(location.search);
   let docId = params.get("id");
   let doc = docId ? getDoc(docId) : null;
@@ -113,80 +127,151 @@
   }
   docNameInput.value = doc.name;
 
-  // ----- העדפות תצוגה: ברירת המחדל היא מצב נקי לגמרי -----
-  let chromeOn = false;   // סרגל עיצוב עליון + לשוניות גיליונות למטה
-  let rowNumOn = false;   // עמודת מספרי השורות
+  // ----- העדפות תצוגה -----
+  let chromeOn = false;
+  let rowHeaderW = 32;
   try {
     chromeOn = localStorage.getItem("dov-sheet-chrome") === "1";
-    rowNumOn = localStorage.getItem("dov-sheet-rownum") === "1";
+    const w = parseInt(localStorage.getItem("dov-sheet-rowheaderw"), 10);
+    if (!isNaN(w)) rowHeaderW = Math.max(0, Math.min(120, w));
   } catch (e) {}
 
-  // ----- בניית הגיליון (נבנה מחדש בכל שינוי תצוגה) -----
-  let s = null;
-  let saveTimer = null;
+  // ----- המרת נתונים מהמנוע הישן (x-spreadsheet) -----
+  function convertOldData(old) {
+    const sheets = [];
+    old.forEach((os, i) => {
+      const celldata = [];
+      const rows = (os && os.rows) || {};
+      Object.keys(rows).forEach((rk) => {
+        if (rk === "len") return;
+        const r = parseInt(rk, 10);
+        if (isNaN(r)) return;
+        const cells = (rows[rk] && rows[rk].cells) || {};
+        Object.keys(cells).forEach((ck) => {
+          const c = parseInt(ck, 10);
+          if (isNaN(c)) return;
+          const t = cells[ck].text;
+          if (t !== undefined && t !== "") {
+            celldata.push({ r: r, c: c, v: { v: t, m: String(t) } });
+          }
+        });
+      });
+      sheets.push({ name: (os && os.name) || ("Sheet" + (i + 1)), index: "s" + (i + 1), order: i, status: i === 0 ? 1 : 0, celldata: celldata });
+    });
+    return sheets.length ? sheets : null;
+  }
 
+  let initialSheets = null;
+  if (doc.data && doc.data.engine === "luckysheet" && Array.isArray(doc.data.sheets) && doc.data.sheets.length) {
+    initialSheets = doc.data.sheets;
+  } else if (Array.isArray(doc.data)) {
+    initialSheets = convertOldData(doc.data);
+  }
+  if (!initialSheets) {
+    initialSheets = [{ name: "Sheet1", index: "s1", order: 0, status: 1, celldata: [] }];
+  }
+
+  // ----- שמירה -----
+  let saveTimer = null;
+  function snapshot() {
+    const sheets = luckysheet.getAllSheets();
+    sheets.forEach((s) => {
+      try {
+        if (s.data) {
+          s.celldata = luckysheet.transToCellData(s.data);
+          delete s.data;
+        }
+      } catch (e) {}
+      delete s.load;
+    });
+    return sheets;
+  }
   function scheduleSave() {
     saveStatus.textContent = "שומר...";
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try {
-        updateDoc(docId, { data: s.getData() });
+        updateDoc(docId, { data: { engine: "luckysheet", sheets: snapshot() } });
         saveStatus.textContent = "נשמר ✓";
       } catch (e) {
         saveStatus.textContent = "⚠️ השמירה נכשלה";
       }
-    }, 500);
+    }, 600);
   }
 
-  function buildSheet() {
-    // שומרים את המידע הנוכחי לפני בנייה מחדש
-    const data = s ? s.getData() : (getDoc(docId).data || null);
-    sheetRoot.innerHTML = "";
+  // ----- בניית הגיליון -----
+  let booted = false;
+  function buildSheet(sheets) {
     document.body.classList.toggle("chrome-on", chromeOn);
-    s = x_spreadsheet("#sheetRoot", {
-      mode: "edit",
-      showToolbar: chromeOn,
-      showBottomBar: chromeOn,
-      showGrid: true,
-      showContextmenu: true,
-      view: {
-        height: () => sheetRoot.clientHeight,
-        width: () => sheetRoot.clientWidth,
-      },
-      col: {
-        len: 26,
-        width: 100,
-        indexWidth: rowNumOn ? 60 : 0,
-        minWidth: 60,
+    if (booted) { try { luckysheet.destroy(); } catch (e) {} }
+    sheetRoot.innerHTML = "";
+    luckysheet.create({
+      container: "sheetRoot",
+      lang: "en",
+      data: sheets,
+      showinfobar: false,
+      showtoolbar: chromeOn,
+      showsheetbar: chromeOn,
+      showstatisticBar: chromeOn,
+      sheetFormulaBar: chromeOn,
+      enableAddRow: false,
+      enableAddBackTop: false,
+      rowHeaderWidth: rowHeaderW,
+      columnHeaderHeight: 20,
+      row: 100,
+      column: 26,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      hook: {
+        updated: function () { scheduleSave(); },
+        workbookCreateAfter: function () {
+          saveStatus.textContent = "מוכן";
+          const z = (sheets[0] && sheets[0].zoomRatio) || 1;
+          zoomPct.value = Math.round(z * 100);
+        },
       },
     });
-    if (data) {
-      try { s.loadData(data); } catch (e) {}
-    }
-    s.change(scheduleSave);
+    booted = true;
     chromeBtn.classList.toggle("on", chromeOn);
-    rowNumBtn.classList.toggle("on", rowNumOn);
   }
 
-  buildSheet();
+  buildSheet(initialSheets);
 
-  // ----- תיקון הגלילה: הגלילה נשארת בתוך הגיליון ולא זולגת לדף הנושן -----
-  // הספרייה מזיזה את התוכן בעצמה; preventDefault רק מבטל את גלילת הדף המארח
+  // ----- בליעת גלילה: שלא תזלוג לדף הנושן -----
   sheetRoot.addEventListener("wheel", (e) => { e.preventDefault(); }, { passive: false });
 
-  // ----- כפתורי התצוגה -----
+  // ----- זום -----
+  function applyZoom(z) {
+    z = Math.max(0.25, Math.min(4, z));
+    try { luckysheet.setSheetZoom(z); } catch (e) {}
+    zoomPct.value = Math.round(z * 100);
+    scheduleSave();
+  }
+  function currentZoom() {
+    const v = parseInt(zoomPct.value, 10);
+    return isNaN(v) ? 1 : v / 100;
+  }
+  document.getElementById("zoomIn").addEventListener("click", () => applyZoom(currentZoom() + 0.25));
+  document.getElementById("zoomOut").addEventListener("click", () => applyZoom(currentZoom() - 0.25));
+  zoomPct.addEventListener("change", () => applyZoom(currentZoom()));
+  zoomPct.addEventListener("keydown", (e) => { if (e.key === "Enter") applyZoom(currentZoom()); });
+
+  // ----- מתגי תצוגה -----
   chromeBtn.addEventListener("click", () => {
     chromeOn = !chromeOn;
     try { localStorage.setItem("dov-sheet-chrome", chromeOn ? "1" : "0"); } catch (e) {}
-    buildSheet();
+    buildSheet(snapshot());
   });
   rowNumBtn.addEventListener("click", () => {
-    rowNumOn = !rowNumOn;
-    try { localStorage.setItem("dov-sheet-rownum", rowNumOn ? "1" : "0"); } catch (e) {}
-    buildSheet();
+    const answer = prompt("רוחב עמודת מספרי השורות בפיקסלים (0 = מוסתרת, מומלץ 28-46):", rowHeaderW);
+    if (answer === null) return;
+    const w = parseInt(answer, 10);
+    if (isNaN(w)) return;
+    rowHeaderW = Math.max(0, Math.min(120, w));
+    try { localStorage.setItem("dov-sheet-rowheaderw", String(rowHeaderW)); } catch (e) {}
+    buildSheet(snapshot());
   });
 
-  // ----- שם -----
+  // ----- שם המסמך -----
   docNameInput.addEventListener("change", () => {
     const name = docNameInput.value.trim();
     if (name) {
@@ -197,7 +282,7 @@
     saveStatus.textContent = "נשמר ✓";
   });
 
-  // ----- הסרגל התחתון: בגיליון הוא מוסתר כברירת מחדל -----
+  // ----- הסרגל התחתון (מוסתר כברירת מחדל) -----
   function setBarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
     try { localStorage.setItem("dov-sheet-bar", hidden ? "0" : "1"); } catch (e) {}
@@ -212,21 +297,33 @@
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
 
   // ----- ייצוא CSV -----
+  function sheetTo2D(sh) {
+    if (sh.data && sh.data.length) {
+      return sh.data.map((row) => (row || []).map((c) => {
+        if (!c) return "";
+        if (c.m !== undefined && c.m !== null) return String(c.m);
+        if (c.v !== undefined && c.v !== null) return String(c.v);
+        return "";
+      }));
+    }
+    const out = [];
+    (sh.celldata || []).forEach((item) => {
+      const v = item.v || {};
+      let text = "";
+      if (v.m !== undefined && v.m !== null) text = String(v.m);
+      else if (v.v !== undefined && v.v !== null) text = String(v.v);
+      if (text === "") return;
+      while (out.length <= item.r) out.push([]);
+      out[item.r][item.c] = text;
+    });
+    return out;
+  }
   document.getElementById("csvBtn").addEventListener("click", () => {
-    const all = s.getData();
-    const data = all && all[0] ? all[0] : {};
-    const rows = data.rows || {};
-    let maxRow = -1;
-    let maxCol = -1;
-    Object.keys(rows).forEach((rk) => {
-      if (rk === "len") return;
-      const r = parseInt(rk, 10);
-      if (isNaN(r)) return;
-      const cells = rows[rk].cells || {};
-      Object.keys(cells).forEach((ck) => {
-        const c = parseInt(ck, 10);
-        if (isNaN(c)) return;
-        const text = cells[ck].text;
+    const sheets = luckysheet.getAllSheets();
+    const grid = sheetTo2D(sheets[0] || {});
+    let maxRow = -1, maxCol = -1;
+    grid.forEach((row, r) => {
+      (row || []).forEach((text, c) => {
         if (text !== undefined && text !== "") {
           if (r > maxRow) maxRow = r;
           if (c > maxCol) maxCol = c;
@@ -237,10 +334,7 @@
     for (let r = 0; r <= maxRow; r++) {
       const line = [];
       for (let c = 0; c <= maxCol; c++) {
-        let text = "";
-        if (rows[r] && rows[r].cells && rows[r].cells[c] && rows[r].cells[c].text !== undefined) {
-          text = String(rows[r].cells[c].text);
-        }
+        let text = (grid[r] && grid[r][c] !== undefined) ? String(grid[r][c]) : "";
         if (/[",\n]/.test(text)) text = '"' + text.replace(/"/g, '""') + '"';
         line.push(text);
       }
