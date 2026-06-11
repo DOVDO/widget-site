@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>גיליון</title>
+<!-- x-spreadsheet: גיליון אלקטרוני קל עם עיצוב, צבעים ונוסחאות בסיסיות -->
+<link rel="stylesheet" href="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css">
+<script src="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    background: #fff; color: #37352f;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* מרווח עליון — אזור תפריט הריחוף של נושן */
+  .content { flex: 1; min-height: 0; padding: 28px 6px 4px; }
+  #sheetRoot { height: 100%; width: 100%; }
+
+  .toolbar {
+    display: flex; gap: 6px; align-items: center;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin;
+    margin: 6px 10px 10px; padding: 6px 10px;
+    border: 1px solid #e9e9e7; border-radius: 10px; background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  }
+  .toolbar::-webkit-scrollbar { height: 4px; }
+  .toolbar::-webkit-scrollbar-thumb { background: #d3d3d0; border-radius: 2px; }
+  .toolbar a { text-decoration: none; font-size: 15px; flex-shrink: 0; }
+  #docName {
+    border: 1px solid transparent; border-radius: 6px; background: transparent;
+    font-size: 13.5px; font-weight: 600; color: #37352f;
+    padding: 3px 8px; min-width: 60px; max-width: 180px; flex: 1 1 60px;
+    direction: rtl;
+  }
+  #docName:hover { border-color: #d3d3d0; }
+  #docName:focus { outline: none; border-color: #2383e2; }
+  .toolbar button {
+    border: 1px solid #d3d3d0; background: #fff; color: #37352f;
+    border-radius: 6px; padding: 4px 9px; font-size: 12.5px; cursor: pointer;
+    flex-shrink: 0; white-space: nowrap;
+  }
+  .toolbar button:hover { background: #f1f1ef; }
+  #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; white-space: nowrap; }
+
+  body.toolbar-hidden .toolbar { display: none; }
+  #showBtn {
+    display: none; position: fixed; bottom: 10px; inset-inline-start: 10px;
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid #d3d3d0; background: #fff; cursor: pointer;
+    font-size: 13px; opacity: .35; box-shadow: 0 2px 6px rgba(0,0,0,.1);
+    align-items: center; justify-content: center; z-index: 50;
+  }
+  #showBtn:hover { opacity: 1; }
+  body.toolbar-hidden #showBtn { display: flex; }
+</style>
+</head>
+<body>
+
+  <div class="content"><div id="sheetRoot"></div></div>
+
+  <div class="toolbar">
+    <a href="index.html" title="כל הקבצים">🏠</a>
+    <input id="docName" title="שם הגיליון — לחץ כדי לערוך">
+    <button id="linksBtn" title="היכן הגיליון משובץ בנושן">🔗</button>
+    <button id="csvBtn" title="הורדה כ-CSV (נפתח באקסל)">⬇️ CSV</button>
+    <span id="saveStatus"></span>
+    <button id="hideBtn" title="הסתרת הסרגל">⌄</button>
+  </div>
+  <button id="showBtn" title="הצגת הסרגל">⌃</button>
+
+<script src="storage.js"></script>
+<script src="links-ui.js"></script>
+<script>
+  const docNameInput = document.getElementById("docName");
+  const saveStatus = document.getElementById("saveStatus");
+  const sheetRoot = document.getElementById("sheetRoot");
+
+  window.addEventListener("error", (e) => {
+    if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + e.message;
+  });
+
+  // ----- טעינת הגיליון -----
+  const params = new URLSearchParams(location.search);
+  let docId = params.get("id");
+  let doc = docId ? getDoc(docId) : null;
+  if (!doc) {
+    doc = createDoc("sheet", null);
+    docId = doc.id;
+    history.replaceState(null, "", "sheet.html?id=" + encodeURIComponent(docId));
+  }
+  docNameInput.value = doc.name;
+
+  // ----- הגיליון -----
+  const s = x_spreadsheet("#sheetRoot", {
+    mode: "edit",
+    showToolbar: true,
+    showGrid: true,
+    showBottomBar: true,
+    view: {
+      height: () => sheetRoot.clientHeight,
+      width: () => sheetRoot.clientWidth,
+    },
+  });
+
+  if (doc.data) {
+    try { s.loadData(doc.data); } catch (e) {}
+  }
+
+  let saveTimer = null;
+  s.change(() => {
+    saveStatus.textContent = "שומר...";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        updateDoc(docId, { data: s.getData() });
+        saveStatus.textContent = "נשמר ✓";
+      } catch (e) {
+        saveStatus.textContent = "⚠️ השמירה נכשלה";
+      }
+    }, 500);
+  });
+
+  // ----- שם -----
+  docNameInput.addEventListener("change", () => {
+    const name = docNameInput.value.trim();
+    if (name) {
+      updateDoc(docId, { name: name });
+    } else {
+      docNameInput.value = getDoc(docId).name;
+    }
+    saveStatus.textContent = "נשמר ✓";
+  });
+
+  // ----- הסתרת סרגל -----
+  function setToolbarHidden(hidden) {
+    document.body.classList.toggle("toolbar-hidden", hidden);
+    try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
+  }
+  document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
+  document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
+  try {
+    if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
+  } catch (e) {}
+
+  // ----- קישורי נושן -----
+  document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
+
+  // ----- ייצוא CSV -----
+  document.getElementById("csvBtn").addEventListener("click", () => {
+    const all = s.getData();
+    const data = all && all[0] ? all[0] : {};
+    const rows = data.rows || {};
+    let maxRow = -1;
+    let maxCol = -1;
+    Object.keys(rows).forEach((rk) => {
+      if (rk === "len") return;
+      const r = parseInt(rk, 10);
+      if (isNaN(r)) return;
+      const cells = rows[rk].cells || {};
+      Object.keys(cells).forEach((ck) => {
+        const c = parseInt(ck, 10);
+        if (isNaN(c)) return;
+        const text = cells[ck].text;
+        if (text !== undefined && text !== "") {
+          if (r > maxRow) maxRow = r;
+          if (c > maxCol) maxCol = c;
+        }
+      });
+    });
+    const lines = [];
+    for (let r = 0; r <= maxRow; r++) {
+      const line = [];
+      for (let c = 0; c <= maxCol; c++) {
+        let text = "";
+        if (rows[r] && rows[r].cells && rows[r].cells[c] && rows[r].cells[c].text !== undefined) {
+          text = String(rows[r].cells[c].text);
+        }
+        if (/[",\n]/.test(text)) text = '"' + text.replace(/"/g, '""') + '"';
+        line.push(text);
+      }
+      lines.push(line.join(","));
+    }
+    // BOM כדי שעברית תיפתח תקין באקסל
+    const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const safeName = (getDoc(docId).name || "sheet").replace(/[\\/:*?"<>|]/g, "-");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = safeName + ".csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+</script>
+</body>
+</html>

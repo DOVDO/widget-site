@@ -132,6 +132,7 @@
     <button id="sourceBtn" title="עריכת קוד ה-Markdown">&lt;/&gt; מקור</button>
     <button id="downloadBtn" title="הורדת קובץ Markdown">⬇️ .md</button>
     <span id="saveStatus"></span>
+    <button id="linksBtn" title="היכן הקובץ משובץ בנושן">🔗</button>
     <button id="hideBtn" title="הסתרת הסרגל">⌄</button>
   </div>
   <button id="showBtn" title="הצגת הסרגל">⌃</button>
@@ -147,6 +148,7 @@
   <div id="dropLine"></div>
 
 <script src="storage.js"></script>
+<script src="links-ui.js"></script>
 <script>
   // =====================================================
   // 1) כל הרכיבים מוגדרים קודם כל דבר —
@@ -590,6 +592,8 @@
   try {
     if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
   } catch (e) {}
+
+  document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
 </script>
 </body>
 </html>

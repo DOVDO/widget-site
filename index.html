@@ -9,150 +9,316 @@
   body {
     font-family: -apple-system, "Segoe UI", Arial, sans-serif;
     background: #fff; color: #37352f;
-    /* מרווח עליון גדול — מתחת לתפריט הריחוף של נושן */
-    padding: 48px 14px 20px; max-width: 720px; margin: 0 auto;
+    min-height: 100vh; display: flex; flex-direction: column;
+    padding: 46px 14px 16px; /* מרווח עליון — אזור תפריט הריחוף של נושן */
   }
-  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-  h1 { font-size: 20px; flex: 1; min-width: 140px; }
-  .subtitle { color: #9b9a97; font-size: 13px; margin-bottom: 18px; }
 
-  .new-btn {
-    border: none; background: #2383e2; color: #fff;
-    border-radius: 8px; padding: 8px 16px; font-size: 14px;
-    cursor: pointer; font-weight: 600;
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  #crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 13.5px; min-width: 0; }
+  #crumbs button {
+    border: none; background: none; cursor: pointer; font-family: inherit;
+    font-size: 13.5px; color: #9b9a97; padding: 2px 4px; border-radius: 4px;
+    max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .new-btn:hover { background: #1a73c7; }
+  #crumbs button:hover { background: #f1f1ef; color: #37352f; }
+  #crumbs button.cur { color: #37352f; font-weight: 600; cursor: default; }
+  #crumbs .sep { color: #d3d3d0; }
 
-  .doc-list { display: flex; flex-direction: column; gap: 6px; }
-  .doc-row {
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button {
+    border: 1px solid #d3d3d0; background: #fff; color: #37352f;
+    border-radius: 6px; padding: 5px 10px; font-size: 12.5px; cursor: pointer;
+    font-family: inherit; white-space: nowrap;
+  }
+  .actions button:hover { background: #f1f1ef; }
+  .actions button.primary { background: #2383e2; border-color: #2383e2; color: #fff; }
+  .actions button.primary:hover { background: #1b6ec2; }
+
+  main { flex: 1; }
+  .empty { color: #9b9a97; font-size: 13.5px; text-align: center; padding: 30px 0; }
+
+  .row {
     display: flex; align-items: center; gap: 8px;
     border: 1px solid #e9e9e7; border-radius: 8px;
-    padding: 10px 12px; text-decoration: none; color: inherit;
+    padding: 8px 10px; margin-bottom: 6px; background: #fff;
   }
-  .doc-row:hover { background: #f7f6f3; }
-  .doc-row .icon { font-size: 18px; }
-  .doc-row .info { flex: 1; min-width: 0; }
-  .doc-row .name {
-    font-weight: 600; font-size: 14.5px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  .row:hover { background: #fbfbfa; }
+  .row .icon { font-size: 16px; flex-shrink: 0; }
+  .row .main { flex: 1; min-width: 0; cursor: pointer; }
+  .row .name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { font-size: 11px; color: #9b9a97; margin-top: 1px; }
+  .row .btns { display: flex; gap: 4px; flex-shrink: 0; }
+  .row .btns button {
+    border: none; background: none; cursor: pointer; font-size: 13px;
+    padding: 3px 5px; border-radius: 5px; color: #9b9a97; font-family: inherit;
   }
-  .doc-row .meta { font-size: 12px; color: #9b9a97; }
-  .doc-row button {
-    border: none; background: none; cursor: pointer;
-    font-size: 15px; padding: 4px; border-radius: 5px; flex-shrink: 0;
-  }
-  .doc-row button:hover { background: #e9e9e7; }
+  .row .btns button:hover { background: #f1f1ef; color: #37352f; }
+  .linked { color: #2383e2 !important; font-weight: 600; }
 
-  .empty {
-    text-align: center; color: #9b9a97; padding: 36px 10px;
-    border: 1px dashed #d3d3d0; border-radius: 10px; font-size: 14px;
-  }
+  footer { margin-top: 14px; font-size: 11px; color: #9b9a97; text-align: center; }
 
-  .soon-section { margin-top: 28px; }
-  .soon-title { font-size: 13px; color: #9b9a97; margin-bottom: 8px; }
-  .soon-row { display: flex; gap: 8px; flex-wrap: wrap; }
-  .soon-chip {
-    font-size: 12.5px; color: #6b6b6b; background: #f1f1ef;
-    border-radius: 6px; padding: 4px 10px;
+  /* חלון בחירת תיקייה (להעברת קובץ) */
+  #moveOverlay {
+    position: fixed; inset: 0; background: rgba(15,15,15,.45); z-index: 150;
+    display: none; align-items: center; justify-content: center; padding: 14px;
   }
-  footer { margin-top: 26px; font-size: 12px; color: #c9c8c5; }
-
-  @media (max-width: 480px) {
-    body { padding: 44px 10px 16px; }
-    h1 { font-size: 18px; }
-    .new-btn { width: 100%; }
+  #moveBox {
+    background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    width: 100%; max-width: 380px; max-height: 70vh; overflow-y: auto; padding: 14px 16px;
   }
+  #moveBox h3 { font-size: 14.5px; margin-bottom: 10px; }
+  #moveBox button.opt {
+    display: block; width: 100%; text-align: right; border: none; background: none;
+    font-family: inherit; font-size: 13.5px; padding: 7px 8px; border-radius: 6px; cursor: pointer;
+    color: #37352f;
+  }
+  #moveBox button.opt:hover { background: #f1f1ef; }
+  #moveBox .cancel { margin-top: 8px; width: 100%; border: 1px solid #d3d3d0; background: #fff; border-radius: 6px; padding: 6px; font-family: inherit; font-size: 12.5px; cursor: pointer; }
 </style>
 </head>
 <body>
+
   <header>
-    <h1>🧰 המסמכים שלי</h1>
-    <button class="new-btn" id="newBtn">➕ מסמך חדש</button>
+    <div id="crumbs"></div>
+    <div class="actions">
+      <button id="newDocBtn" class="primary">➕ מסמך</button>
+      <button id="newSheetBtn" class="primary">➕ גיליון</button>
+      <button id="newFolderBtn">📁 תיקייה</button>
+    </div>
   </header>
-  <p class="subtitle">לחיצה אחת יוצרת מסמך ופותחת אותו מיד — השם ניתן לעריכה בכל רגע</p>
 
-  <div class="doc-list" id="docList"></div>
+  <main id="list"></main>
 
-  <div class="soon-section">
-    <div class="soon-title">בקרוב:</div>
-    <div class="soon-row">
-      <span class="soon-chip">🎨 קנבס ציור</span>
-      <span class="soon-chip">📊 גיליון</span>
+  <footer>גרסה 0.8 — שמירה מקומית בדפדפן זה</footer>
+
+  <div id="moveOverlay">
+    <div id="moveBox">
+      <h3>📂 העבר אל...</h3>
+      <div id="moveOptions"></div>
+      <button class="cancel" id="moveCancel">ביטול</button>
     </div>
   </div>
 
-  <footer>גרסה 0.7 — שמירה מקומית בדפדפן הזה</footer>
-
 <script src="storage.js"></script>
+<script src="links-ui.js"></script>
 <script>
-  const docList = document.getElementById("docList");
+  let currentFolderId = null;
 
-  function formatDate(ts) {
-    const d = new Date(ts);
-    const pad = (n) => String(n).padStart(2, "0");
-    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() +
-      " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  function fmtDate(iso) {
+    try {
+      const d = new Date(iso);
+      return pad2(d.getDate()) + "." + pad2(d.getMonth() + 1) + "." + d.getFullYear() + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+    } catch (e) { return ""; }
+  }
+
+  function folderPath(folderId) {
+    const path = [];
+    let cur = folderId ? getFolder(folderId) : null;
+    while (cur) {
+      path.unshift(cur);
+      cur = cur.parentId ? getFolder(cur.parentId) : null;
+    }
+    return path;
+  }
+
+  function renderCrumbs() {
+    const crumbs = document.getElementById("crumbs");
+    crumbs.innerHTML = "";
+    const path = folderPath(currentFolderId);
+    const rootBtn = document.createElement("button");
+    rootBtn.textContent = "🏠 ראשי";
+    if (!path.length) rootBtn.className = "cur";
+    else rootBtn.addEventListener("click", () => { currentFolderId = null; render(); });
+    crumbs.appendChild(rootBtn);
+    path.forEach((f, i) => {
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = "/";
+      crumbs.appendChild(sep);
+      const btn = document.createElement("button");
+      btn.textContent = f.name;
+      if (i === path.length - 1) btn.className = "cur";
+      else btn.addEventListener("click", () => { currentFolderId = f.id; render(); });
+      crumbs.appendChild(btn);
+    });
+  }
+
+  function folderRow(f) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const icon = document.createElement("span");
+    icon.className = "icon";
+    icon.textContent = "📁";
+    const main = document.createElement("div");
+    main.className = "main";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = f.name;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const docCount = listDocs(f.id).length;
+    const folderCount = listFolders(f.id).length;
+    meta.textContent = docCount + " קבצים · " + folderCount + " תיקיות";
+    main.appendChild(name);
+    main.appendChild(meta);
+    main.addEventListener("click", () => { currentFolderId = f.id; render(); });
+    const btns = document.createElement("div");
+    btns.className = "btns";
+    const renameBtn = document.createElement("button");
+    renameBtn.title = "שינוי שם";
+    renameBtn.textContent = "✏️";
+    renameBtn.addEventListener("click", () => {
+      const newName = prompt("שם חדש לתיקייה:", f.name);
+      if (newName && newName.trim()) { renameFolder(f.id, newName.trim()); render(); }
+    });
+    const delBtn = document.createElement("button");
+    delBtn.title = "מחיקה";
+    delBtn.textContent = "🗑️";
+    delBtn.addEventListener("click", () => {
+      if (confirm('למחוק את התיקייה "' + f.name + '"?\nהתוכן שלה לא יימחק — הוא יעבור לתיקייה שמעליה.')) {
+        deleteFolder(f.id);
+        render();
+      }
+    });
+    btns.appendChild(renameBtn);
+    btns.appendChild(delBtn);
+    row.appendChild(icon);
+    row.appendChild(main);
+    row.appendChild(btns);
+    return row;
+  }
+
+  function openDocPage(d) {
+    location.href = (d.type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id);
+  }
+
+  function docRow(d) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const icon = document.createElement("span");
+    icon.className = "icon";
+    icon.textContent = d.type === "sheet" ? "📊" : "📝";
+    const main = document.createElement("div");
+    main.className = "main";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = d.name;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const linkCount = (d.links || []).length;
+    meta.textContent = "עודכן: " + fmtDate(d.updated) + (linkCount ? " · 🔗 משובץ ב-" + linkCount + " מקומות" : "");
+    main.appendChild(name);
+    main.appendChild(meta);
+    main.addEventListener("click", () => openDocPage(d));
+    const btns = document.createElement("div");
+    btns.className = "btns";
+
+    const linksBtn = document.createElement("button");
+    linksBtn.title = "היכן הקובץ משובץ בנושן";
+    linksBtn.textContent = "🔗" + (linkCount ? linkCount : "");
+    if (linkCount) linksBtn.className = "linked";
+    linksBtn.addEventListener("click", () => openLinksModal(d.id, render));
+
+    const moveBtn = document.createElement("button");
+    moveBtn.title = "העברה לתיקייה";
+    moveBtn.textContent = "📂";
+    moveBtn.addEventListener("click", () => openMove(d.id));
+
+    const renameBtn = document.createElement("button");
+    renameBtn.title = "שינוי שם";
+    renameBtn.textContent = "✏️";
+    renameBtn.addEventListener("click", () => {
+      const newName = prompt("שם חדש לקובץ:", d.name);
+      if (newName && newName.trim()) { updateDoc(d.id, { name: newName.trim() }); render(); }
+    });
+
+    const delBtn = document.createElement("button");
+    delBtn.title = "מחיקה";
+    delBtn.textContent = "🗑️";
+    delBtn.addEventListener("click", () => {
+      let msg = 'למחוק את "' + d.name + '"?';
+      const links = d.links || [];
+      if (links.length) {
+        msg += "\n\n⚠️ שים לב: הקובץ משובץ בנושן ב-" + links.length + " מקומות:\n" +
+          links.map((l) => "• " + (l.note || l.url)).join("\n") +
+          "\n\nההטמעות האלו יפסיקו לעבוד!";
+      }
+      if (confirm(msg)) {
+        deleteDoc(d.id);
+        render();
+      }
+    });
+
+    btns.appendChild(linksBtn);
+    btns.appendChild(moveBtn);
+    btns.appendChild(renameBtn);
+    btns.appendChild(delBtn);
+    row.appendChild(icon);
+    row.appendChild(main);
+    row.appendChild(btns);
+    return row;
   }
 
   function render() {
-    const docs = listDocs();
-    docList.innerHTML = "";
-
-    if (docs.length === 0) {
-      docList.innerHTML = '<div class="empty">אין עדיין מסמכים — לחץ על “מסמך חדש” כדי להתחיל 🚀</div>';
+    renderCrumbs();
+    const listEl = document.getElementById("list");
+    listEl.innerHTML = "";
+    const folders = listFolders(currentFolderId);
+    const docs = listDocs(currentFolderId);
+    if (!folders.length && !docs.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "התיקייה ריקה — צור מסמך, גיליון או תיקייה מהכפתורים למעלה ⬆️";
+      listEl.appendChild(empty);
       return;
     }
-
-    for (const doc of docs) {
-      const row = document.createElement("a");
-      row.className = "doc-row";
-      row.href = "markdown.html?id=" + encodeURIComponent(doc.id);
-
-      const icon = document.createElement("span");
-      icon.className = "icon";
-      icon.textContent = "📝";
-
-      const info = document.createElement("div");
-      info.className = "info";
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = doc.name;
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = "עודכן: " + formatDate(doc.updated);
-      info.append(name, meta);
-
-      const renameBtn = document.createElement("button");
-      renameBtn.textContent = "✏️";
-      renameBtn.title = "שינוי שם";
-      renameBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        const newName = prompt("שם חדש למסמך:", doc.name);
-        if (newName && newName.trim()) {
-          updateDoc(doc.id, { name: newName.trim() });
-          render();
-        }
-      });
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.textContent = "🗑️";
-      deleteBtn.title = "מחיקה";
-      deleteBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (confirm('למחוק את "' + doc.name + '"? אי אפשר לשחזר.')) {
-          deleteDoc(doc.id);
-          render();
-        }
-      });
-
-      row.append(icon, info, renameBtn, deleteBtn);
-      docList.append(row);
-    }
+    folders.forEach((f) => listEl.appendChild(folderRow(f)));
+    docs.forEach((d) => listEl.appendChild(docRow(d)));
   }
 
-  document.getElementById("newBtn").addEventListener("click", () => {
-    const doc = createDoc();
-    location.href = "markdown.html?id=" + encodeURIComponent(doc.id);
+  // ----- העברת קובץ לתיקייה -----
+  const moveOverlay = document.getElementById("moveOverlay");
+  const moveOptions = document.getElementById("moveOptions");
+
+  function openMove(docId) {
+    moveOptions.innerHTML = "";
+    function addOption(label, folderId, depth) {
+      const btn = document.createElement("button");
+      btn.className = "opt";
+      btn.textContent = "\u00a0".repeat(depth * 3) + label;
+      btn.addEventListener("click", () => {
+        moveDoc(docId, folderId);
+        moveOverlay.style.display = "none";
+        render();
+      });
+      moveOptions.appendChild(btn);
+    }
+    addOption("🏠 ראשי", null, 0);
+    function walk(parentId, depth) {
+      listFolders(parentId).forEach((f) => {
+        addOption("📁 " + f.name, f.id, depth);
+        walk(f.id, depth + 1);
+      });
+    }
+    walk(null, 1);
+    moveOverlay.style.display = "flex";
+  }
+
+  document.getElementById("moveCancel").addEventListener("click", () => { moveOverlay.style.display = "none"; });
+  moveOverlay.addEventListener("mousedown", (e) => { if (e.target === moveOverlay) moveOverlay.style.display = "none"; });
+
+  // ----- כפתורי יצירה -----
+  document.getElementById("newDocBtn").addEventListener("click", () => {
+    const d = createDoc("markdown", currentFolderId);
+    location.href = "markdown.html?id=" + encodeURIComponent(d.id);
+  });
+  document.getElementById("newSheetBtn").addEventListener("click", () => {
+    const d = createDoc("sheet", currentFolderId);
+    location.href = "sheet.html?id=" + encodeURIComponent(d.id);
+  });
+  document.getElementById("newFolderBtn").addEventListener("click", () => {
+    const name = prompt("שם התיקייה:");
+    if (name && name.trim()) { createFolder(name.trim(), currentFolderId); render(); }
   });
 
   render();
