@@ -4,20 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>גיליון</title>
-<!-- x-spreadsheet: גיליון אלקטרוני קל עם עיצוב, צבעים ונוסחאות בסיסיות -->
 <link rel="stylesheet" href="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.css">
 <script src="https://unpkg.com/x-data-spreadsheet@1.1.9/dist/xspreadsheet.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; }
-  html, body { height: 100%; }
+  html, body {
+    height: 100%;
+    /* מונע "זליגת" גלילה החוצה לעמוד הנושן המארח */
+    overscroll-behavior: none;
+  }
   body {
     font-family: -apple-system, "Segoe UI", Arial, sans-serif;
     background: #fff; color: #37352f;
     display: flex; flex-direction: column; overflow: hidden;
   }
 
-  /* מרווח עליון — אזור תפריט הריחוף של נושן */
-  .content { flex: 1; min-height: 0; padding: 28px 6px 4px; }
+  .content { flex: 1; min-height: 0; padding: 8px 6px 4px; }
+  body.chrome-on .content { padding-top: 28px; }
   #sheetRoot { height: 100%; width: 100%; }
 
   .toolbar {
@@ -41,9 +44,10 @@
   .toolbar button {
     border: 1px solid #d3d3d0; background: #fff; color: #37352f;
     border-radius: 6px; padding: 4px 9px; font-size: 12.5px; cursor: pointer;
-    flex-shrink: 0; white-space: nowrap;
+    flex-shrink: 0; white-space: nowrap; font-family: inherit;
   }
   .toolbar button:hover { background: #f1f1ef; }
+  .toolbar button.on { background: #37352f; color: #fff; border-color: #37352f; }
   #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; white-space: nowrap; }
 
   body.toolbar-hidden .toolbar { display: none; }
@@ -65,6 +69,8 @@
   <div class="toolbar">
     <a href="index.html" title="כל הקבצים">🏠</a>
     <input id="docName" title="שם הגיליון — לחץ כדי לערוך">
+    <button id="chromeBtn" title="הצגת/הסתרת סרגל העיצוב ולשוניות הגיליונות">🎛️ תפריטים</button>
+    <button id="rowNumBtn" title="הצגת/הסתרת מספרי השורות">🔢 מספרי שורות</button>
     <button id="linksBtn" title="היכן הגיליון משובץ בנושן">🔗</button>
     <button id="csvBtn" title="הורדה כ-CSV (נפתח באקסל)">⬇️ CSV</button>
     <span id="saveStatus"></span>
@@ -78,6 +84,8 @@
   const docNameInput = document.getElementById("docName");
   const saveStatus = document.getElementById("saveStatus");
   const sheetRoot = document.getElementById("sheetRoot");
+  const chromeBtn = document.getElementById("chromeBtn");
+  const rowNumBtn = document.getElementById("rowNumBtn");
 
   window.addEventListener("error", (e) => {
     if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + e.message;
@@ -94,24 +102,19 @@
   }
   docNameInput.value = doc.name;
 
-  // ----- הגיליון -----
-  const s = x_spreadsheet("#sheetRoot", {
-    mode: "edit",
-    showToolbar: true,
-    showGrid: true,
-    showBottomBar: true,
-    view: {
-      height: () => sheetRoot.clientHeight,
-      width: () => sheetRoot.clientWidth,
-    },
-  });
+  // ----- העדפות תצוגה: ברירת המחדל היא מצב נקי לגמרי -----
+  let chromeOn = false;   // סרגל עיצוב עליון + לשוניות גיליונות למטה
+  let rowNumOn = false;   // עמודת מספרי השורות
+  try {
+    chromeOn = localStorage.getItem("dov-sheet-chrome") === "1";
+    rowNumOn = localStorage.getItem("dov-sheet-rownum") === "1";
+  } catch (e) {}
 
-  if (doc.data) {
-    try { s.loadData(doc.data); } catch (e) {}
-  }
-
+  // ----- בניית הגיליון (נבנה מחדש בכל שינוי תצוגה) -----
+  let s = null;
   let saveTimer = null;
-  s.change(() => {
+
+  function scheduleSave() {
     saveStatus.textContent = "שומר...";
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -122,6 +125,54 @@
         saveStatus.textContent = "⚠️ השמירה נכשלה";
       }
     }, 500);
+  }
+
+  function buildSheet() {
+    // שומרים את המידע הנוכחי לפני בנייה מחדש
+    const data = s ? s.getData() : (getDoc(docId).data || null);
+    sheetRoot.innerHTML = "";
+    document.body.classList.toggle("chrome-on", chromeOn);
+    s = x_spreadsheet("#sheetRoot", {
+      mode: "edit",
+      showToolbar: chromeOn,
+      showBottomBar: chromeOn,
+      showGrid: true,
+      showContextmenu: true,
+      view: {
+        height: () => sheetRoot.clientHeight,
+        width: () => sheetRoot.clientWidth,
+      },
+      col: {
+        len: 26,
+        width: 100,
+        indexWidth: rowNumOn ? 60 : 0,
+        minWidth: 60,
+      },
+    });
+    if (data) {
+      try { s.loadData(data); } catch (e) {}
+    }
+    s.change(scheduleSave);
+    chromeBtn.classList.toggle("on", chromeOn);
+    rowNumBtn.classList.toggle("on", rowNumOn);
+  }
+
+  buildSheet();
+
+  // ----- תיקון הגלילה: הגלילה נשארת בתוך הגיליון ולא זולגת לדף הנושן -----
+  // הספרייה מזיזה את התוכן בעצמה; preventDefault רק מבטל את גלילת הדף המארח
+  sheetRoot.addEventListener("wheel", (e) => { e.preventDefault(); }, { passive: false });
+
+  // ----- כפתורי התצוגה -----
+  chromeBtn.addEventListener("click", () => {
+    chromeOn = !chromeOn;
+    try { localStorage.setItem("dov-sheet-chrome", chromeOn ? "1" : "0"); } catch (e) {}
+    buildSheet();
+  });
+  rowNumBtn.addEventListener("click", () => {
+    rowNumOn = !rowNumOn;
+    try { localStorage.setItem("dov-sheet-rownum", rowNumOn ? "1" : "0"); } catch (e) {}
+    buildSheet();
   });
 
   // ----- שם -----
@@ -135,16 +186,16 @@
     saveStatus.textContent = "נשמר ✓";
   });
 
-  // ----- הסתרת סרגל -----
-  function setToolbarHidden(hidden) {
+  // ----- הסרגל התחתון: בגיליון הוא מוסתר כברירת מחדל -----
+  function setBarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
-    try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
+    try { localStorage.setItem("dov-sheet-bar", hidden ? "0" : "1"); } catch (e) {}
   }
-  document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
-  document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
-  try {
-    if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
-  } catch (e) {}
+  document.getElementById("hideBtn").addEventListener("click", () => setBarHidden(true));
+  document.getElementById("showBtn").addEventListener("click", () => setBarHidden(false));
+  let barShown = false;
+  try { barShown = localStorage.getItem("dov-sheet-bar") === "1"; } catch (e) {}
+  setBarHidden(!barShown);
 
   // ----- קישורי נושן -----
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
@@ -184,7 +235,6 @@
       }
       lines.push(line.join(","));
     }
-    // BOM כדי שעברית תיפתח תקין באקסל
     const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
     const safeName = (getDoc(docId).name || "sheet").replace(/[\\/:*?"<>|]/g, "-");
     const a = document.createElement("a");
