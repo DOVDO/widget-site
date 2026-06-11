@@ -123,6 +123,9 @@
   #dovExtraMenu.open .dov-sub { display: block; }
   #dovExtraMenu .dov-sub .dov-menuitem { padding-right: 26px; }
   #dovExtraMenu .dov-arrow { float: left; color: #9b9a97; font-size: 11px; }
+
+  .dovSwatch.sel { outline: 2px solid #2383e2; outline-offset: 1px; }
+  .luckysheet-scrollbar-x, .luckysheet-scrollbar-y { overscroll-behavior: none; }
 </style>
 </head>
 <body>
@@ -139,6 +142,8 @@
       <input id="zoomPct" value="100" title="אחוז תצוגה — הקלד ערך חופשי (25 עד 400)">
       <button id="zoomIn" title="הגדלת תצוגה">➕</button>
     </span>
+    <button id="undoBtn" title="ביטול פעולה אחרונה (Ctrl+Z)">↩</button>
+    <button id="redoBtn" title="ביצוע חוזר (Ctrl+Y)">↪</button>
     <button id="linksBtn" title="היכן הגיליון משובץ בנושן">🔗</button>
     <button id="copyUrlBtn" title="העתקת כתובת הדף הנוכחי (לשחזור הטמעה)">📋</button>
     <button id="csvBtn" title="הורדה כ-CSV (נפתח באקסל)">⬇️ CSV</button>
@@ -156,7 +161,9 @@
     HTMLElement.prototype.focus = function (opts) {
       return origFocus.call(this, Object.assign({ preventScroll: true }, opts || {}));
     };
+    const dovOrigSIV = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = function () {};
+    setTimeout(function () { Element.prototype.scrollIntoView = dovOrigSIV; }, 1500);
   })();
 
   const docNameInput = document.getElementById("docName");
@@ -279,13 +286,28 @@
     buildBody(body, close);
   }
 
-  // ----- עיצוב מהיר (על הטווח המסומן) -----
+  // ----- עיצוב מהיר (על הטווח המסומן) עם חיווי מצב -----
   const dovColors = ["#37352f", "#787774", "#e03e3e", "#d9730d", "#dfab01", "#0f7b6c", "#0b6e99", "#6940a5", "#ad1a72", "#ffffff", "#f1f1ef", "#fbe4e4", "#faebdd", "#fbf3db", "#ddedea", "#ddebf1", "#eae4f2", "#f4dfeb"];
   function setFmt(attr, value) {
     try { luckysheet.setRangeFormat(attr, value); scheduleSave(); } catch (e) { alert("לא הצלחתי להחיל — ודא שיש תאים מסומנים"); }
   }
+  function dovGetSelCell() {
+    try {
+      const r = luckysheet.getRange();
+      if (r && r[0]) return { r: r[0].row[0], c: r[0].column[0] };
+    } catch (e) {}
+    return null;
+  }
+  function dovCellAttr(attr) {
+    const s = dovGetSelCell();
+    if (!s) return null;
+    try { return luckysheet.getCellValue(s.r, s.c, { type: attr }); } catch (e) { return null; }
+  }
   function openQuickFormat() {
-    dovModal("🎨 עיצוב מהיר לתאים המסומנים", (body) => {
+    dovModal("\ud83c\udfa8 עיצוב מהיר לתאים המסומנים", (body) => {
+      const refreshers = [];
+      function refreshAll() { refreshers.forEach((f) => { try { f(); } catch (e) {} }); }
+
       function swatchRow(label, attr) {
         const lab = document.createElement("div");
         lab.className = "dovLabel";
@@ -298,35 +320,18 @@
           b.className = "dovSwatch";
           b.style.background = c;
           b.title = c;
-          b.addEventListener("click", () => setFmt(attr, c));
+          b.dataset.c = c;
+          b.addEventListener("click", () => { setFmt(attr, c); setTimeout(refreshAll, 120); });
           row.appendChild(b);
+        });
+        refreshers.push(() => {
+          const cur = String(dovCellAttr(attr) || "").toLowerCase();
+          row.querySelectorAll(".dovSwatch").forEach((btn) => {
+            btn.classList.toggle("sel", btn.dataset.c === cur);
+          });
         });
         body.appendChild(row);
       }
-      swatchRow("צבע רקע", "bg");
-      swatchRow("צבע טקסט", "fc");
-
-      const lab = document.createElement("div");
-      lab.className = "dovLabel";
-      lab.textContent = "סגנון טקסט";
-      body.appendChild(lab);
-      const row = document.createElement("div");
-      row.className = "dovBtnRow";
-      [
-        ["𝐁 מודגש", () => setFmt("bl", 1)],
-        ["ללא הדגשה", () => setFmt("bl", 0)],
-        ["𝐼 נטוי", () => setFmt("it", 1)],
-        ["ללא נטוי", () => setFmt("it", 0)],
-        ["קו תחתון", () => setFmt("un", 1)],
-        ["קו חוצה", () => setFmt("cl", 1)],
-        ["ניקוי סגנון", () => { setFmt("bl", 0); setFmt("it", 0); setFmt("un", 0); setFmt("cl", 0); }],
-      ].forEach(([t, fn]) => {
-        const b = document.createElement("button");
-        b.textContent = t;
-        b.addEventListener("click", fn);
-        row.appendChild(b);
-      });
-      body.appendChild(row);
 
       function dovBtnGroup(labelText, defs) {
         const lab = document.createElement("div");
@@ -335,28 +340,39 @@
         body.appendChild(lab);
         const r = document.createElement("div");
         r.className = "dovBtnRow";
-        defs.forEach(([t, fn]) => {
+        defs.forEach((def) => {
+          const t = def[0], fn = def[1], isOn = def[2];
           const b = document.createElement("button");
           b.textContent = t;
-          b.addEventListener("click", fn);
+          b.addEventListener("click", () => { fn(); setTimeout(refreshAll, 120); });
+          if (isOn) refreshers.push(() => { b.classList.toggle("on", !!isOn()); });
           r.appendChild(b);
         });
         body.appendChild(r);
       }
+
+      swatchRow("צבע רקע", "bg");
+      swatchRow("צבע טקסט", "fc");
+      dovBtnGroup("סגנון טקסט (לחיצה מדליקה/מכבה)", [
+        ["\ud835\udc01 מודגש", () => setFmt("bl", dovCellAttr("bl") == 1 ? 0 : 1), () => dovCellAttr("bl") == 1],
+        ["\ud835\udc3c נטוי", () => setFmt("it", dovCellAttr("it") == 1 ? 0 : 1), () => dovCellAttr("it") == 1],
+        ["קו תחתון", () => setFmt("un", dovCellAttr("un") == 1 ? 0 : 1), () => dovCellAttr("un") == 1],
+        ["קו חוצה", () => setFmt("cl", dovCellAttr("cl") == 1 ? 0 : 1), () => dovCellAttr("cl") == 1],
+      ]);
       dovBtnGroup("יישור אופקי", [
-        ["ימין", () => setFmt("ht", 2)],
-        ["מרכז", () => setFmt("ht", 0)],
-        ["שמאל", () => setFmt("ht", 1)],
+        ["ימין", () => setFmt("ht", 2), () => dovCellAttr("ht") == 2],
+        ["מרכז", () => setFmt("ht", 0), () => dovCellAttr("ht") == 0],
+        ["שמאל", () => setFmt("ht", 1), () => dovCellAttr("ht") == 1],
       ]);
       dovBtnGroup("יישור אנכי", [
-        ["למעלה", () => setFmt("vt", 1)],
-        ["אמצע", () => setFmt("vt", 0)],
-        ["למטה", () => setFmt("vt", 2)],
+        ["למעלה", () => setFmt("vt", 1), () => dovCellAttr("vt") == 1],
+        ["אמצע", () => setFmt("vt", 0), () => dovCellAttr("vt") == 0],
+        ["למטה", () => setFmt("vt", 2), () => dovCellAttr("vt") == 2],
       ]);
       dovBtnGroup("טקסט ארוך", [
-        ["גלישת שורות", () => setFmt("tb", 2)],
-        ["זליגה לתא הסמוך", () => setFmt("tb", 1)],
-        ["חיתוך", () => setFmt("tb", 0)],
+        ["גלישת שורות", () => setFmt("tb", 2), () => dovCellAttr("tb") == 2],
+        ["זליגה לתא הסמוך", () => setFmt("tb", 1), () => dovCellAttr("tb") == 1],
+        ["חיתוך", () => setFmt("tb", 0), () => dovCellAttr("tb") == 0],
       ]);
       dovBtnGroup("מיזוג תאים", [
         ["מזג את הטווח", () => { try { luckysheet.setRangeMerge("all"); scheduleSave(); } catch (e) { alert("סמן קודם טווח של כמה תאים"); } }],
@@ -376,12 +392,18 @@
         sel.appendChild(o);
       });
       sel.addEventListener("change", () => setFmt("fs", parseInt(sel.value, 10)));
+      refreshers.push(() => {
+        const fs = parseInt(dovCellAttr("fs"), 10);
+        if (!isNaN(fs) && [9, 10, 11, 12, 14, 16, 18, 20, 24, 28].indexOf(fs) !== -1) sel.value = String(fs);
+      });
       body.appendChild(sel);
 
       const tip = document.createElement("div");
       tip.className = "dovLabel";
-      tip.textContent = "החלון נשאר פתוח — אפשר להחיל כמה עיצובים ברצף.";
+      tip.textContent = "כפתור כהה / מסגרת כחולה = העיצוב הפעיל בתא הראשון שסומן. החלון נשאר פתוח לכמה עיצובים ברצף.";
       body.appendChild(tip);
+
+      refreshAll();
     });
   }
 
@@ -426,6 +448,27 @@
   }
 
   // ----- תפריט "הכלים שלי" בראש תפריט הקליק הימני -----
+  function dovKeyCombo(keyCode, key) {
+    const ev = new KeyboardEvent("keydown", { key: key, ctrlKey: true, bubbles: true, cancelable: true });
+    Object.defineProperty(ev, "keyCode", { get: function () { return keyCode; } });
+    Object.defineProperty(ev, "which", { get: function () { return keyCode; } });
+    document.dispatchEvent(ev);
+  }
+  function doUndo() {
+    try {
+      if (typeof luckysheet.undo === "function") { luckysheet.undo(); scheduleSave(); return; }
+    } catch (e) {}
+    dovKeyCombo(90, "z");
+    scheduleSave();
+  }
+  function doRedo() {
+    try {
+      if (typeof luckysheet.redo === "function") { luckysheet.redo(); scheduleSave(); return; }
+    } catch (e) {}
+    dovKeyCombo(89, "y");
+    scheduleSave();
+  }
+
   function injectExtraMenu() {
     const menu = document.getElementById("luckysheet-rightclick-menu");
     if (!menu || document.getElementById("dovExtraMenu")) return;
@@ -445,6 +488,8 @@
     const sub = document.createElement("div");
     sub.className = "dov-sub";
     const items = [
+      ["\u21a9 בטל פעולה (Undo)", doUndo],
+      ["\u21aa בצע שוב (Redo)", doRedo],
       ["\ud83c\udfa8 עיצוב מהיר (צבעים, יישור, מיזוג)", openQuickFormat],
       ["\ud83d\udccb העתק את כתובת הדף הנוכחי", copyCurrentUrl],
       ["\ud83d\udd0d זום...", () => {
@@ -520,7 +565,10 @@
   setTimeout(injectExtraMenu, 5000);
 
   // ----- בליעת גלילה: שלא תזלוג לדף הנושן -----
-  sheetRoot.addEventListener("wheel", (e) => { e.preventDefault(); }, { passive: false });
+  sheetRoot.addEventListener("wheel", (e) => {
+    if (e.target && e.target.closest && e.target.closest(".luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
+    e.preventDefault();
+  }, { passive: false });
 
   // ----- זום -----
   function applyZoom(z) {
@@ -580,6 +628,8 @@
   // ----- קישורי נושן -----
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
   document.getElementById("copyUrlBtn").addEventListener("click", copyCurrentUrl);
+  document.getElementById("undoBtn").addEventListener("click", doUndo);
+  document.getElementById("redoBtn").addEventListener("click", doRedo);
 
   // ----- ייצוא CSV -----
   function sheetTo2D(sh) {
