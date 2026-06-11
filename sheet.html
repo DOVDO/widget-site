@@ -114,6 +114,15 @@
   .dovListItem { text-align: right; }
   .dovListItem.active { background: #37352f; color: #fff; border-color: #37352f; }
   .dovBox select { border: 1px solid #d3d3d0; border-radius: 6px; padding: 3px 6px; font-size: 12.5px; font-family: inherit; }
+
+  /* תפריט הקליק הימני: לא נחתך — נגלל */
+  #luckysheet-rightclick-menu { max-height: calc(100vh - 16px) !important; overflow-y: auto !important; }
+  #dovExtraMenu { border-top: none; border-bottom: 1px solid #e1e1e1; margin: 0 0 4px; padding: 0 0 4px; }
+  #dovExtraMenu .dov-head { font-weight: 700; }
+  #dovExtraMenu .dov-sub { display: none; }
+  #dovExtraMenu.open .dov-sub { display: block; }
+  #dovExtraMenu .dov-sub .dov-menuitem { padding-right: 26px; }
+  #dovExtraMenu .dov-arrow { float: left; color: #9b9a97; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -131,6 +140,7 @@
       <button id="zoomIn" title="הגדלת תצוגה">➕</button>
     </span>
     <button id="linksBtn" title="היכן הגיליון משובץ בנושן">🔗</button>
+    <button id="copyUrlBtn" title="העתקת כתובת הדף הנוכחי (לשחזור הטמעה)">📋</button>
     <button id="csvBtn" title="הורדה כ-CSV (נפתח באקסל)">⬇️ CSV</button>
     <span id="saveStatus">טוען...</span>
     <button id="hideBtn" title="הסתרת הסרגל">⌄</button>
@@ -318,6 +328,41 @@
       });
       body.appendChild(row);
 
+      function dovBtnGroup(labelText, defs) {
+        const lab = document.createElement("div");
+        lab.className = "dovLabel";
+        lab.textContent = labelText;
+        body.appendChild(lab);
+        const r = document.createElement("div");
+        r.className = "dovBtnRow";
+        defs.forEach(([t, fn]) => {
+          const b = document.createElement("button");
+          b.textContent = t;
+          b.addEventListener("click", fn);
+          r.appendChild(b);
+        });
+        body.appendChild(r);
+      }
+      dovBtnGroup("יישור אופקי", [
+        ["ימין", () => setFmt("ht", 2)],
+        ["מרכז", () => setFmt("ht", 0)],
+        ["שמאל", () => setFmt("ht", 1)],
+      ]);
+      dovBtnGroup("יישור אנכי", [
+        ["למעלה", () => setFmt("vt", 1)],
+        ["אמצע", () => setFmt("vt", 0)],
+        ["למטה", () => setFmt("vt", 2)],
+      ]);
+      dovBtnGroup("טקסט ארוך", [
+        ["גלישת שורות", () => setFmt("tb", 2)],
+        ["זליגה לתא הסמוך", () => setFmt("tb", 1)],
+        ["חיתוך", () => setFmt("tb", 0)],
+      ]);
+      dovBtnGroup("מיזוג תאים", [
+        ["מזג את הטווח", () => { try { luckysheet.setRangeMerge("all"); scheduleSave(); } catch (e) { alert("סמן קודם טווח של כמה תאים"); } }],
+        ["בטל מיזוג", () => { try { luckysheet.cancelRangeMerge(); scheduleSave(); } catch (e) {} }],
+      ]);
+
       const lab2 = document.createElement("div");
       lab2.className = "dovLabel";
       lab2.textContent = "גודל גופן";
@@ -369,41 +414,68 @@
     });
   }
 
-  // ----- הזרקת פריטים לתפריט הקליק הימני של הגיליון -----
+  // ----- העתקת כתובת הדף הנוכחי -----
+  function copyCurrentUrl() {
+    const url = location.href;
+    function fallback() { prompt("העתק את הכתובת (Ctrl+C ואז Enter):", url); }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => { saveStatus.textContent = "הכתובת הועתקה ✓"; }, fallback);
+      } else { fallback(); }
+    } catch (e) { fallback(); }
+  }
+
+  // ----- תפריט "הכלים שלי" בראש תפריט הקליק הימני -----
   function injectExtraMenu() {
     const menu = document.getElementById("luckysheet-rightclick-menu");
     if (!menu || document.getElementById("dovExtraMenu")) return;
     const wrap = document.createElement("div");
     wrap.id = "dovExtraMenu";
+    const head = document.createElement("div");
+    head.className = "dov-menuitem dov-head";
+    head.innerHTML = '\u05d4\u05db\u05dc\u05d9\u05dd \u05e9\u05dc\u05d9 \ud83e\uddf0 <span class="dov-arrow">\u25c2</span>';
+    head.addEventListener("mousedown", (e) => e.stopPropagation());
+    head.addEventListener("click", (e) => {
+      e.stopPropagation();
+      wrap.classList.toggle("open");
+      const arr = head.querySelector(".dov-arrow");
+      if (arr) arr.textContent = wrap.classList.contains("open") ? "\u25be" : "\u25c2";
+    });
+    wrap.appendChild(head);
+    const sub = document.createElement("div");
+    sub.className = "dov-sub";
     const items = [
-      ["🎨 עיצוב מהיר (צבעים, הדגשה, גודל)", openQuickFormat],
-      ["🔍 זום...", () => {
+      ["\ud83c\udfa8 עיצוב מהיר (צבעים, יישור, מיזוג)", openQuickFormat],
+      ["\ud83d\udccb העתק את כתובת הדף הנוכחי", copyCurrentUrl],
+      ["\ud83d\udd0d זום...", () => {
         const answer = prompt("אחוז תצוגה (25-400):", zoomPct.value);
         if (answer === null) return;
         const v = parseInt(answer, 10);
         if (!isNaN(v)) applyZoom(v / 100);
       }],
-      ["📑 גיליונות (מעבר והוספה)", openSheetsModal],
-      ["🎛️ הצג/הסתר תפריטים מלאים", toggleChrome],
-      ["👁️ הצג/הסתר את סרגל הווידג'ט", () => {
+      ["\ud83d\udcd1 גיליונות (מעבר והוספה)", openSheetsModal],
+      ["\ud83c\udf9b\ufe0f הצג/הסתר תפריטים מלאים", toggleChrome],
+      ["\ud83d\udc41\ufe0f הצג/הסתר את סרגל הווידג'ט", () => {
         setBarHidden(!document.body.classList.contains("toolbar-hidden"));
       }],
-      ["🔗 קישורי נושן", () => openLinksModal(docId)],
-      ["⬇️ הורדת CSV", () => document.getElementById("csvBtn").click()],
+      ["\ud83d\udd17 קישורי נושן", () => openLinksModal(docId)],
+      ["\u2b07\ufe0f הורדת CSV", () => document.getElementById("csvBtn").click()],
     ];
     items.forEach(([label, fn]) => {
       const it = document.createElement("div");
       it.className = "dov-menuitem";
       it.textContent = label;
-      it.addEventListener("mousedown", (e) => { e.stopPropagation(); });
+      it.addEventListener("mousedown", (e) => e.stopPropagation());
       it.addEventListener("click", (e) => {
         e.stopPropagation();
         menu.style.display = "none";
+        wrap.classList.remove("open");
         fn();
       });
-      wrap.appendChild(it);
+      sub.appendChild(it);
     });
-    menu.appendChild(wrap);
+    wrap.appendChild(sub);
+    menu.insertBefore(wrap, menu.firstChild);
   }
 
   // ----- בניית הגיליון -----
@@ -507,6 +579,7 @@
 
   // ----- קישורי נושן -----
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
+  document.getElementById("copyUrlBtn").addEventListener("click", copyCurrentUrl);
 
   // ----- ייצוא CSV -----
   function sheetTo2D(sh) {
