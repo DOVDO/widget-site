@@ -20,21 +20,17 @@
     display: flex; flex-direction: column;
   }
 
-  /* אזור התוכן — מרווח עליון כדי להתרחק מתפריט הריחוף של נושן */
   .content { flex: 1; min-height: 0; padding: 30px 10px 4px; }
   #editorRoot, #viewerRoot { height: 100%; }
   #viewerRoot { overflow: auto; padding: 0 6px; }
 
-  /* מצבי תצוגה */
   body.mode-view #editorRoot { display: none; }
   body:not(.mode-view) #viewerRoot { display: none; }
 
-  /* עברית ו-RTL בתוך העורך והתצוגה */
   .toastui-editor-contents { direction: rtl; text-align: right; font-size: 15px; font-family: -apple-system, "Segoe UI", Arial, sans-serif; }
   .toastui-editor-contents pre, .toastui-editor-contents code { direction: ltr; text-align: left; }
   .ProseMirror { direction: rtl; }
 
-  /* הסרגל התחתון — מרחף, לא נדבק לקצוות */
   .toolbar {
     display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
     margin: 6px 10px 10px; padding: 6px 10px;
@@ -59,7 +55,6 @@
   .toolbar button.active { background: #37352f; color: #fff; border-color: #37352f; }
   #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; }
 
-  /* הסתרת הסרגל לכתיבה נקייה + כפתור קטן שמחזיר אותו */
   body.toolbar-hidden .toolbar { display: none; }
   #showBtn {
     display: none; position: fixed; bottom: 10px; inset-inline-start: 10px;
@@ -70,6 +65,34 @@
   }
   #showBtn:hover { opacity: 1; }
   body.toolbar-hidden #showBtn { display: flex; }
+
+  /* ===== ידית בלוק בסגנון נושן ===== */
+  #blockHandle {
+    position: fixed; z-index: 60; display: none;
+  }
+  #blockHandle button {
+    border: none; background: #fff; color: #9b9a97;
+    border: 1px solid #e9e9e7; border-radius: 6px;
+    width: 24px; height: 24px; cursor: pointer; font-size: 13px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #blockHandle button:hover { background: #f1f1ef; color: #37352f; }
+
+  #bhMenu {
+    position: fixed; z-index: 70; display: none;
+    flex-direction: column; min-width: 160px;
+    background: #fff; border: 1px solid #e9e9e7; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 4px;
+    direction: rtl;
+  }
+  #bhMenu button {
+    border: none; background: none; text-align: right;
+    padding: 7px 10px; font-size: 13.5px; cursor: pointer; border-radius: 6px;
+    color: #37352f; font-family: inherit;
+  }
+  #bhMenu button:hover { background: #f1f1ef; }
+  #bhMenu button.danger { color: #c4554d; }
 </style>
 </head>
 <body class="mode-view">
@@ -90,6 +113,14 @@
     <button id="hideBtn" title="הסתרת הסרגל — כתיבה נקייה">⌄</button>
   </div>
   <button id="showBtn" title="הצגת הסרגל">⌃</button>
+
+  <!-- ידית הבלוק והתפריט שלה -->
+  <div id="blockHandle"><button id="bhBtn" title="פעולות בלוק">⋮⋮</button></div>
+  <div id="bhMenu">
+    <button data-act="above">⬆️ הוסף בלוק מעל</button>
+    <button data-act="below">⬇️ הוסף בלוק מתחת</button>
+    <button data-act="delete" class="danger">🗑️ מחק את הבלוק</button>
+  </div>
 
 <script src="storage.js"></script>
 <script>
@@ -112,7 +143,7 @@
   }
   docNameInput.value = doc.name;
 
-  // --- העורך: Toast UI — WYSIWYG שמייצר Markdown ---
+  // --- העורך — עם כל הכלים האפשריים בסרגל ---
   const editor = new toastui.Editor({
     el: document.getElementById("editorRoot"),
     height: "100%",
@@ -122,10 +153,17 @@
     hideModeSwitch: true,
     autofocus: false,
     placeholder: "כתוב כאן...",
+    toolbarItems: [
+      ["heading", "bold", "italic", "strike"],
+      ["hr", "quote"],
+      ["ul", "ol", "task", "indent", "outdent"],
+      ["table", "image", "link"],
+      ["code", "codeblock"],
+    ],
     plugins: [toastui.Editor.plugin.colorSyntax],
   });
 
-  // --- התצוגה (קריאה בלבד) — אותו מנוע רינדור, בלי עריכה ---
+  // --- התצוגה (קריאה בלבד) ---
   const viewer = toastui.Editor.factory({
     el: document.getElementById("viewerRoot"),
     viewer: true,
@@ -138,9 +176,8 @@
     viewer.setMarkdown(md.trim() ? md : "*המסמך ריק — עבור למצב ✏️ עריכה כדי לכתוב*");
   }
 
-  // --- שלושת המצבים: צפייה / עריכה / מקור ---
+  // --- מצבים ---
   let currentMode = null;
-
   function setMode(mode) {
     currentMode = mode;
     document.body.classList.remove("mode-view", "mode-edit", "mode-source");
@@ -148,6 +185,7 @@
     for (const key in modeButtons) {
       modeButtons[key].classList.toggle("active", key === mode);
     }
+    hideHandle(); hideMenu();
     if (mode === "view") {
       refreshViewer();
     } else if (mode === "edit") {
@@ -166,7 +204,6 @@
   modeButtons.edit.addEventListener("click", () => { setMode("edit"); editor.focus(); });
   modeButtons.source.addEventListener("click", () => { setMode("source"); editor.focus(); });
 
-  // לחיצה כפולה על התצוגה — קפיצה לעריכה
   document.getElementById("viewerRoot").addEventListener("dblclick", () => {
     setMode("edit");
     editor.focus();
@@ -194,7 +231,7 @@
     saveStatus.textContent = "נשמר ✓";
   });
 
-  // --- הסתרה/הצגה של הסרגל ---
+  // --- הסתרת הסרגל ---
   function setToolbarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
     try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
@@ -214,6 +251,112 @@
     a.download = safeName + ".md";
     a.click();
     URL.revokeObjectURL(a.href);
+  });
+
+  // ============================================
+  // ידית בלוק בסגנון נושן:
+  // ריחוף על בלוק במצב עריכה מציג ⋮⋮ בצד הבלוק.
+  // לחיצה פותחת תפריט: הוספה מעל / מתחת / מחיקה.
+  // ============================================
+  const blockHandle = document.getElementById("blockHandle");
+  const bhMenu = document.getElementById("bhMenu");
+  let hoveredBlock = null;
+
+  function getProseMirror() {
+    return document.querySelector("#editorRoot .ProseMirror");
+  }
+
+  function hideHandle() { blockHandle.style.display = "none"; }
+  function hideMenu() { bhMenu.style.display = "none"; }
+
+  function positionHandle(block) {
+    const rect = block.getBoundingClientRect();
+    let left = rect.right + 4;
+    if (left + 28 > window.innerWidth) left = rect.right - 28;
+    blockHandle.style.top = Math.max(rect.top, 0) + "px";
+    blockHandle.style.left = left + "px";
+    blockHandle.style.display = "block";
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    if (currentMode !== "edit") return;
+    // אם העכבר על הידית או התפריט — לא מזיזים כלום
+    if (blockHandle.contains(e.target) || bhMenu.contains(e.target)) return;
+    const pm = getProseMirror();
+    if (!pm) { hideHandle(); return; }
+    let el = e.target;
+    if (!pm.contains(el)) {
+      // מחוץ לעורך — מסתירים (אלא אם התפריט פתוח)
+      if (bhMenu.style.display !== "flex") hideHandle();
+      return;
+    }
+    // מטפסים לבלוק העליון (הילד הישיר של העורך)
+    while (el.parentElement && el.parentElement !== pm) el = el.parentElement;
+    if (el && el.parentElement === pm) {
+      hoveredBlock = el;
+      positionHandle(el);
+    }
+  });
+
+  // גלילה או שינוי גודל — מסתירים כדי לא להציג ידית במקום הלא נכון
+  document.addEventListener("scroll", () => { hideHandle(); hideMenu(); }, true);
+  window.addEventListener("resize", () => { hideHandle(); hideMenu(); });
+
+  // לחיצה על הידית — פותחת את התפריט לידה
+  document.getElementById("bhBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!hoveredBlock) return;
+    const rect = blockHandle.getBoundingClientRect();
+    bhMenu.style.display = "flex";
+    let left = rect.left - 170;
+    if (left < 4) left = 4;
+    let top = rect.top;
+    if (top + 130 > window.innerHeight) top = window.innerHeight - 130;
+    bhMenu.style.top = top + "px";
+    bhMenu.style.left = left + "px";
+  });
+
+  // לחיצה בכל מקום אחר — סוגרת את התפריט
+  document.addEventListener("mousedown", (e) => {
+    if (!bhMenu.contains(e.target) && !blockHandle.contains(e.target)) hideMenu();
+  });
+
+  // --- פעולות התפריט ---
+  function placeCaretIn(el) {
+    const sel = window.getSelection();
+    const r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  bhMenu.addEventListener("click", (e) => {
+    const act = e.target.dataset && e.target.dataset.act;
+    if (!act || !hoveredBlock) return;
+    const block = hoveredBlock;
+    editor.focus();
+
+    if (act === "delete") {
+      // בוחרים את כל הבלוק ומוחקים — העורך קולט את השינוי ומסתנכרן
+      const sel = window.getSelection();
+      const r = document.createRange();
+      r.selectNode(block);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      let ok = false;
+      try { ok = document.execCommand("delete"); } catch (err) {}
+      if (!ok && block.parentElement) block.remove();
+    } else {
+      const p = document.createElement("p");
+      p.innerHTML = "<br>";
+      block.insertAdjacentElement(act === "above" ? "beforebegin" : "afterend", p);
+      placeCaretIn(p);
+    }
+
+    hideMenu();
+    hideHandle();
+    hoveredBlock = null;
   });
 </script>
 </body>
