@@ -9,7 +9,8 @@
   body {
     font-family: -apple-system, "Segoe UI", Arial, sans-serif;
     background: #fff; color: #37352f;
-    padding: 20px 14px; max-width: 720px; margin: 0 auto;
+    /* מרווח עליון גדול — מתחת לתפריט הריחוף של נושן */
+    padding: 48px 14px 20px; max-width: 720px; margin: 0 auto;
   }
   header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
   h1 { font-size: 20px; flex: 1; min-width: 140px; }
@@ -57,7 +58,7 @@
   footer { margin-top: 26px; font-size: 12px; color: #c9c8c5; }
 
   @media (max-width: 480px) {
-    body { padding: 14px 10px; }
+    body { padding: 44px 10px 16px; }
     h1 { font-size: 18px; }
     .new-btn { width: 100%; }
   }
@@ -80,7 +81,7 @@
     </div>
   </div>
 
-  <footer>גרסה 0.2 — שמירה מקומית בדפדפן הזה</footer>
+  <footer>גרסה 0.3 — שמירה מקומית בדפדפן הזה</footer>
 
 <script src="storage.js"></script>
 <script>

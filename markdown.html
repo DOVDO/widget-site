@@ -14,37 +14,18 @@
     background: #fff; color: #37352f;
     display: flex; flex-direction: column;
   }
-  .toolbar {
-    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
-    padding: 6px 10px; border-bottom: 1px solid #e9e9e7;
-  }
-  .toolbar a { text-decoration: none; font-size: 15px; flex-shrink: 0; }
-  #docName {
-    border: 1px solid transparent; border-radius: 6px;
-    font-size: 14px; font-weight: 600; color: #37352f;
-    padding: 3px 8px; min-width: 60px; max-width: 220px; flex: 1;
-    direction: rtl;
-  }
-  #docName:hover { border-color: #d3d3d0; }
-  #docName:focus { outline: none; border-color: #2383e2; }
-  .toolbar button {
-    border: 1px solid #d3d3d0; background: #fff; color: #37352f;
-    border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer;
-    flex-shrink: 0;
-  }
-  .toolbar button:hover { background: #f1f1ef; }
-  #saveStatus { font-size: 12px; color: #9b9a97; flex-shrink: 0; min-width: 52px; text-align: left; }
 
-  .panes { flex: 1; display: flex; min-height: 0; }
+  /* אזור התוכן — למעלה, עם מרווח בטוח קטן מתפריט הריחוף של נושן */
+  .panes { flex: 1; display: flex; min-height: 0; padding-top: 6px; }
   .pane { flex: 1; min-width: 0; min-height: 0; overflow: auto; }
   #editor {
     width: 100%; height: 100%; resize: none; border: none; outline: none;
-    padding: 14px; font-size: 14px; line-height: 1.6;
+    padding: 30px 16px 16px; font-size: 15px; line-height: 1.65;
     font-family: "SF Mono", Consolas, monospace;
-    border-inline-end: 1px solid #e9e9e7;
     direction: rtl;
   }
-  #preview { padding: 14px; line-height: 1.6; direction: rtl; }
+  body.mode-split #editor-pane { border-inline-end: 1px solid #e9e9e7; }
+  #preview { padding: 30px 16px 16px; line-height: 1.65; direction: rtl; font-size: 15px; }
 
   #preview h1, #preview h2, #preview h3 { margin: 14px 0 6px; }
   #preview p, #preview ul, #preview ol, #preview blockquote { margin: 6px 0; }
@@ -54,41 +35,67 @@
   }
   #preview code {
     background: #f1f1ef; border-radius: 4px; padding: 1px 5px;
-    font-family: Consolas, monospace; font-size: 13px; direction: ltr; unicode-bidi: embed;
+    font-family: Consolas, monospace; font-size: 13.5px; direction: ltr; unicode-bidi: embed;
   }
   #preview pre { background: #f7f6f3; padding: 10px; border-radius: 6px; overflow: auto; direction: ltr; text-align: left; }
   #preview pre code { background: none; padding: 0; }
   #preview table { border-collapse: collapse; margin: 8px 0; }
   #preview th, #preview td { border: 1px solid #d3d3d0; padding: 4px 10px; }
+  .empty-hint { color: #c9c8c5; }
 
-  body.preview-only #editor-pane { display: none; }
+  /* מצבי תצוגה: עריכה / צפייה / מפוצל */
+  body.mode-edit #preview-pane { display: none; }
+  body.mode-view #editor-pane { display: none; }
 
-  /* רספונסיביות: במסך צר העורך והתצוגה נערמים זה מעל זה */
-  @media (max-width: 600px) {
-    .panes { flex-direction: column; }
-    #editor {
-      border-inline-end: none;
-      border-bottom: 1px solid #e9e9e7;
-    }
-    .pane { flex: 1 1 50%; }
-    #saveStatus { min-width: auto; }
+  /* הסרגל עבר למטה! — רחוק מתפריט הריחוף של נושן שיושב למעלה */
+  .toolbar {
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 6px 10px; border-top: 1px solid #e9e9e7; background: #fbfbfa;
+  }
+  .toolbar a { text-decoration: none; font-size: 15px; flex-shrink: 0; }
+  #docName {
+    border: 1px solid transparent; border-radius: 6px; background: transparent;
+    font-size: 13.5px; font-weight: 600; color: #37352f;
+    padding: 3px 8px; min-width: 50px; max-width: 200px; flex: 1;
+    direction: rtl;
+  }
+  #docName:hover { border-color: #d3d3d0; background: #fff; }
+  #docName:focus { outline: none; border-color: #2383e2; background: #fff; }
+  .toolbar button {
+    border: 1px solid #d3d3d0; background: #fff; color: #37352f;
+    border-radius: 6px; padding: 4px 9px; font-size: 12.5px; cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toolbar button:hover { background: #f1f1ef; }
+  .toolbar button.active { background: #37352f; color: #fff; border-color: #37352f; }
+  #saveStatus { font-size: 11.5px; color: #9b9a97; flex-shrink: 0; }
+
+  /* מסך צר: אין מצב מפוצל, הכפתור מוסתר */
+  @media (max-width: 700px) {
+    #splitBtn { display: none; }
   }
 </style>
 </head>
-<body>
-  <div class="toolbar">
-    <a href="index.html" title="כל המסמכים">🏠</a>
-    <input id="docName" title="שם המסמך — לחץ כדי לערוך">
-    <button id="toggleBtn">👁️ תצוגה</button>
-    <button id="downloadBtn">⬇️ .md</button>
-    <span id="saveStatus"></span>
-  </div>
+<body class="mode-view">
 
   <div class="panes">
     <div class="pane" id="editor-pane">
       <textarea id="editor" placeholder="כתוב כאן Markdown..."></textarea>
     </div>
-    <div class="pane" id="preview"></div>
+    <div class="pane" id="preview-pane">
+      <div id="preview"></div>
+    </div>
+  </div>
+
+  <!-- הסרגל למטה — אזור בטוח שנושן לא מכסה לעולם -->
+  <div class="toolbar">
+    <a href="index.html" title="כל המסמכים">🏠</a>
+    <input id="docName" title="שם המסמך — לחץ כדי לערוך">
+    <button id="editBtn" title="מצב עריכה">✏️ עריכה</button>
+    <button id="viewBtn" title="מצב קריאה נקי">👁️ צפייה</button>
+    <button id="splitBtn" title="עריכה ותצוגה זה לצד זה">⧉ מפוצל</button>
+    <button id="downloadBtn" title="הורדת קובץ Markdown">⬇️ .md</button>
+    <span id="saveStatus"></span>
   </div>
 
 <script src="storage.js"></script>
@@ -97,29 +104,67 @@
   const preview = document.getElementById("preview");
   const docNameInput = document.getElementById("docName");
   const saveStatus = document.getElementById("saveStatus");
+  const modeButtons = {
+    edit: document.getElementById("editBtn"),
+    view: document.getElementById("viewBtn"),
+    split: document.getElementById("splitBtn"),
+  };
 
-  // --- טעינת המסמך לפי ה-id שבכתובת ---
+  // --- טעינת המסמך ---
   const params = new URLSearchParams(location.search);
   let docId = params.get("id");
   let doc = docId ? getDoc(docId) : null;
-
-  // אם הגענו בלי מסמך (או עם id שלא קיים) — נוצר חדש מיד
   if (!doc) {
     doc = createDoc();
     docId = doc.id;
     history.replaceState(null, "", "markdown.html?id=" + encodeURIComponent(docId));
   }
-
   editor.value = doc.content;
   docNameInput.value = doc.name;
 
   // --- תצוגה מקדימה ---
   function render() {
-    preview.innerHTML = DOMPurify.sanitize(marked.parse(editor.value));
+    if (editor.value.trim() === "") {
+      preview.innerHTML = '<p class="empty-hint">המסמך ריק — לחץ פעמיים (או על ✏️) כדי לכתוב</p>';
+    } else {
+      preview.innerHTML = DOMPurify.sanitize(marked.parse(editor.value));
+    }
   }
   render();
 
-  // --- שמירה אוטומטית (עם השהייה קטנה כדי לא לשמור על כל תו) ---
+  // --- מצבי תצוגה ---
+  // ברירת מחדל: מסמך עם תוכן נפתח לקריאה, מסמך ריק לעריכה.
+  // ההעדפה האחרונה שלך נשמרת לפעם הבאה.
+  let currentMode = null;
+
+  function setMode(mode) {
+    if (mode === "split" && window.innerWidth < 700) mode = "edit";
+    currentMode = mode;
+    document.body.classList.remove("mode-edit", "mode-view", "mode-split");
+    document.body.classList.add("mode-" + mode);
+    for (const key in modeButtons) {
+      modeButtons[key].classList.toggle("active", key === mode);
+    }
+    try { localStorage.setItem("dov-widgets-ui-mode", mode); } catch (e) {}
+  }
+
+  let savedMode = null;
+  try { savedMode = localStorage.getItem("dov-widgets-ui-mode"); } catch (e) {}
+  setMode(savedMode || (doc.content.trim() ? "view" : "edit"));
+
+  modeButtons.edit.addEventListener("click", () => { setMode("edit"); editor.focus(); });
+  modeButtons.view.addEventListener("click", () => setMode("view"));
+  modeButtons.split.addEventListener("click", () => setMode("split"));
+
+  // לחיצה כפולה על התצוגה — קיצור מהיר לעריכה
+  preview.addEventListener("dblclick", () => { setMode("edit"); editor.focus(); });
+
+  // אם החלון הצטמק בזמן מצב מפוצל — עוברים לעריכה
+  window.addEventListener("resize", () => {
+    if (currentMode === "split" && window.innerWidth < 700) setMode("edit");
+  });
+
+  // --- שמירה אוטומטית ---
   let saveTimer = null;
   function scheduleSave() {
     saveStatus.textContent = "שומר...";
@@ -129,31 +174,20 @@
       saveStatus.textContent = "נשמר ✓";
     }, 400);
   }
+  editor.addEventListener("input", () => { render(); scheduleSave(); });
 
-  editor.addEventListener("input", () => {
-    render();
-    scheduleSave();
-  });
-
-  // --- עריכת שם המסמך ---
+  // --- עריכת שם ---
   docNameInput.addEventListener("change", () => {
     const name = docNameInput.value.trim();
     if (name) {
       updateDoc(docId, { name: name });
     } else {
-      docNameInput.value = getDoc(docId).name; // שם ריק — מחזירים את הקודם
+      docNameInput.value = getDoc(docId).name;
     }
     saveStatus.textContent = "נשמר ✓";
   });
 
-  // --- מעבר עריכה/תצוגה ---
-  document.getElementById("toggleBtn").addEventListener("click", (e) => {
-    document.body.classList.toggle("preview-only");
-    e.target.textContent = document.body.classList.contains("preview-only")
-      ? "✏️ עריכה" : "👁️ תצוגה";
-  });
-
-  // --- הורדה כקובץ .md עם שם המסמך ---
+  // --- הורדת .md ---
   document.getElementById("downloadBtn").addEventListener("click", () => {
     const safeName = (getDoc(docId).name || "note").replace(/[\\/:*?"<>|]/g, "-");
     const blob = new Blob([editor.value], { type: "text/markdown" });
