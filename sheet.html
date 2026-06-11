@@ -81,6 +81,17 @@
 <script src="storage.js"></script>
 <script src="links-ui.js"></script>
 <script>
+  // תיקון קריטי: מניעת קפיצת דף הנושן המארח.
+  // כשרכיב בתוך ההטמעה מקבל פוקוס, הדפדפן מגלגל את הדף המארח כדי להציג אותו.
+  // כאן אנחנו הופכים כל פוקוס לשקט (preventScroll) ומבטלים scrollIntoView.
+  (function () {
+    const origFocus = HTMLElement.prototype.focus;
+    HTMLElement.prototype.focus = function (opts) {
+      return origFocus.call(this, Object.assign({ preventScroll: true }, opts || {}));
+    };
+    Element.prototype.scrollIntoView = function () {};
+  })();
+
   const docNameInput = document.getElementById("docName");
   const saveStatus = document.getElementById("saveStatus");
   const sheetRoot = document.getElementById("sheetRoot");
