@@ -9,58 +9,152 @@
   body {
     font-family: -apple-system, "Segoe UI", Arial, sans-serif;
     background: #fff; color: #37352f;
-    padding: 24px 16px; max-width: 720px; margin: 0 auto;
+    padding: 20px 14px; max-width: 720px; margin: 0 auto;
   }
-  h1 { font-size: 22px; margin-bottom: 4px; }
-  .subtitle { color: #9b9a97; font-size: 14px; margin-bottom: 20px; }
+  header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 20px; flex: 1; min-width: 140px; }
+  .subtitle { color: #9b9a97; font-size: 13px; margin-bottom: 18px; }
 
-  .grid {
-    display: grid; gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  .new-btn {
+    border: none; background: #2383e2; color: #fff;
+    border-radius: 8px; padding: 8px 16px; font-size: 14px;
+    cursor: pointer; font-weight: 600;
   }
-  .card {
-    display: block; text-decoration: none; color: inherit;
-    border: 1px solid #e9e9e7; border-radius: 10px;
-    padding: 16px 14px; transition: background .1s;
+  .new-btn:hover { background: #1a73c7; }
+
+  .doc-list { display: flex; flex-direction: column; gap: 6px; }
+  .doc-row {
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid #e9e9e7; border-radius: 8px;
+    padding: 10px 12px; text-decoration: none; color: inherit;
   }
-  a.card:hover { background: #f7f6f3; }
-  .card .icon { font-size: 28px; margin-bottom: 8px; }
-  .card .name { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
-  .card .desc { font-size: 12.5px; color: #9b9a97; }
-  .card.soon { opacity: .45; cursor: default; }
-  .badge {
-    display: inline-block; font-size: 11px; background: #f1f1ef;
-    border-radius: 4px; padding: 1px 6px; margin-top: 6px; color: #6b6b6b;
+  .doc-row:hover { background: #f7f6f3; }
+  .doc-row .icon { font-size: 18px; }
+  .doc-row .info { flex: 1; min-width: 0; }
+  .doc-row .name {
+    font-weight: 600; font-size: 14.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  footer { margin-top: 28px; font-size: 12px; color: #c9c8c5; }
+  .doc-row .meta { font-size: 12px; color: #9b9a97; }
+  .doc-row button {
+    border: none; background: none; cursor: pointer;
+    font-size: 15px; padding: 4px; border-radius: 5px; flex-shrink: 0;
+  }
+  .doc-row button:hover { background: #e9e9e7; }
+
+  .empty {
+    text-align: center; color: #9b9a97; padding: 36px 10px;
+    border: 1px dashed #d3d3d0; border-radius: 10px; font-size: 14px;
+  }
+
+  .soon-section { margin-top: 28px; }
+  .soon-title { font-size: 13px; color: #9b9a97; margin-bottom: 8px; }
+  .soon-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .soon-chip {
+    font-size: 12.5px; color: #6b6b6b; background: #f1f1ef;
+    border-radius: 6px; padding: 4px 10px;
+  }
+  footer { margin-top: 26px; font-size: 12px; color: #c9c8c5; }
+
+  @media (max-width: 480px) {
+    body { padding: 14px 10px; }
+    h1 { font-size: 18px; }
+    .new-btn { width: 100%; }
+  }
 </style>
 </head>
 <body>
-  <h1>🧰 הווידג'טים של דב</h1>
-  <p class="subtitle">בחר ווידג'ט כדי להתחיל</p>
+  <header>
+    <h1>🧰 המסמכים שלי</h1>
+    <button class="new-btn" id="newBtn">➕ מסמך חדש</button>
+  </header>
+  <p class="subtitle">לחיצה אחת יוצרת מסמך ופותחת אותו מיד — השם ניתן לעריכה בכל רגע</p>
 
-  <div class="grid">
-    <a class="card" href="markdown.html">
-      <div class="icon">📝</div>
-      <div class="name">Markdown</div>
-      <div class="desc">עורך עם תצוגה מקדימה חיה</div>
-    </a>
+  <div class="doc-list" id="docList"></div>
 
-    <div class="card soon">
-      <div class="icon">🎨</div>
-      <div class="name">קנבס ציור</div>
-      <div class="desc">ציור חופשי ואובייקטים</div>
-      <span class="badge">בקרוב</span>
-    </div>
-
-    <div class="card soon">
-      <div class="icon">📊</div>
-      <div class="name">גיליון</div>
-      <div class="desc">טבלה עם חישובים וצבעים</div>
-      <span class="badge">בקרוב</span>
+  <div class="soon-section">
+    <div class="soon-title">בקרוב:</div>
+    <div class="soon-row">
+      <span class="soon-chip">🎨 קנבס ציור</span>
+      <span class="soon-chip">📊 גיליון</span>
     </div>
   </div>
 
-  <footer>גרסה 0.1 — שלד ראשוני לבדיקת הטמעה</footer>
+  <footer>גרסה 0.2 — שמירה מקומית בדפדפן הזה</footer>
+
+<script src="storage.js"></script>
+<script>
+  const docList = document.getElementById("docList");
+
+  function formatDate(ts) {
+    const d = new Date(ts);
+    const pad = (n) => String(n).padStart(2, "0");
+    return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() +
+      " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  function render() {
+    const docs = listDocs();
+    docList.innerHTML = "";
+
+    if (docs.length === 0) {
+      docList.innerHTML = '<div class="empty">אין עדיין מסמכים — לחץ על “מסמך חדש” כדי להתחיל 🚀</div>';
+      return;
+    }
+
+    for (const doc of docs) {
+      const row = document.createElement("a");
+      row.className = "doc-row";
+      row.href = "markdown.html?id=" + encodeURIComponent(doc.id);
+
+      const icon = document.createElement("span");
+      icon.className = "icon";
+      icon.textContent = "📝";
+
+      const info = document.createElement("div");
+      info.className = "info";
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = doc.name;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = "עודכן: " + formatDate(doc.updated);
+      info.append(name, meta);
+
+      const renameBtn = document.createElement("button");
+      renameBtn.textContent = "✏️";
+      renameBtn.title = "שינוי שם";
+      renameBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const newName = prompt("שם חדש למסמך:", doc.name);
+        if (newName && newName.trim()) {
+          updateDoc(doc.id, { name: newName.trim() });
+          render();
+        }
+      });
+
+      const deleteBtn = document.createElement("button");
+      deleteBtn.textContent = "🗑️";
+      deleteBtn.title = "מחיקה";
+      deleteBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (confirm('למחוק את "' + doc.name + '"? אי אפשר לשחזר.')) {
+          deleteDoc(doc.id);
+          render();
+        }
+      });
+
+      row.append(icon, info, renameBtn, deleteBtn);
+      docList.append(row);
+    }
+  }
+
+  document.getElementById("newBtn").addEventListener("click", () => {
+    const doc = createDoc();
+    location.href = "markdown.html?id=" + encodeURIComponent(doc.id);
+  });
+
+  render();
+</script>
 </body>
 </html>
