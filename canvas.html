@@ -22,8 +22,14 @@
   body.noChrome #bar { display: none; }
   #canvasRoot { flex: 1; min-height: 0; position: relative; }
   #canvasRoot > div { width: 100%; height: 100%; }
-  #showBtn { display: none; position: fixed; bottom: 14px; inset-inline-start: 14px; z-index: 9000; border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; cursor: pointer; padding: 5px 10px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
-  body.noChrome #showBtn { display: block; }
+  #saveStatus { display: none; }
+
+  /* ===== העמודה הימנית: שליטה בסרגלים + נורית סנכרון ===== */
+  #dovRail { position: fixed; top: 50%; right: 6px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
+  #dovRail button { width: 34px; height: 34px; border: 1px solid #d3d1cb; background: #fff; border-radius: 8px; cursor: pointer; font-size: 15px; padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
+  #dovRail button:hover { background: #f1f1ef; }
+  #dovRail button.on { border-color: #0b6e99; background: #e7f3f8; }
+  #dovDot { width: 12px; height: 12px; border-radius: 50%; margin: 4px auto 0; background: #9b9a97; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d3d1cb; cursor: pointer; }
 
   /* ===== שגיאות ===== */
   #errBanner { display: none; position: fixed; top: 46px; inset-inline: 8px; z-index: 99999; background: #fbe4e4; color: #e03e3e; border: 1px solid #e03e3e; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; }
@@ -61,7 +67,12 @@
 </div>
 <div id="spacer"></div>
 <div id="canvasRoot"></div>
-<button id="showBtn">👁️ הצג סרגל</button>
+<div id="dovRail">
+  <button id="railBar" title="סרגל הקובץ — פתק, מיקומים, ייצוא, קישור">🗂️</button>
+  <button id="railTools" title="סרגל כלים — צורות, טקסט, תמונה">🧰</button>
+  <button id="railBottom" title="סרגל תחתון — צבעים, ביטול וחזרה, תפריט">🎛️</button>
+  <div id="dovDot" title="מצב סנכרון"></div>
+</div>
 <div id="errBanner"></div>
 <div id="toast"></div>
 
@@ -136,10 +147,21 @@
     };
   }
 
+  // חתימת תוכן: שומרים ומסנכרנים רק כשהתוכן האמיתי השתנה
+  // (onChange של Excalidraw נורה גם על סימון, גלילה ותזוזת עכבר — בלי שינוי אמיתי)
+  var lastSig = null;
+  function contentSig(snap) {
+    return JSON.stringify(snap.elements) + "|" + Object.keys(snap.files || {}).length + "|" + JSON.stringify(snap.views);
+  }
+
   function doSave() {
     if (!api) return;
     try {
-      var s = JSON.stringify(snapshotCanvas());
+      var snap = snapshotCanvas();
+      var sig = contentSig(snap);
+      if (sig === lastSig) return; // אין שינוי אמיתי — לא שומרים ולא מסנכרנים
+      lastSig = sig;
+      var s = JSON.stringify(snap);
       updateDoc(docId, { content: s });
       if (s.length > 850000) {
         statusEl.textContent = "⚠️ הקובץ גדול — תמונות כבדות עלולות לא להסתנכרן לענן (מגבלת 1MB)";
@@ -164,7 +186,11 @@
       return;
     }
     var props = {
-      excalidrawAPI: function (a) { api = a; },
+      excalidrawAPI: function (a) {
+        api = a;
+        // קובעים חתימת בסיס מיד אחרי הטעינה — כך פתיחת הדף לבדה לא מפעילה סנכרון
+        setTimeout(function () { try { lastSig = contentSig(snapshotCanvas()); } catch (e) {} }, 300);
+      },
       initialData: {
         elements: saved.elements || [],
         appState: initAS,
@@ -384,8 +410,50 @@
   // ===== שאר כפתורי הסרגל =====
   document.getElementById("homeBtn").addEventListener("click", function () { location.href = "index.html"; });
   document.getElementById("linksBtn").addEventListener("click", function () { openLinksModal(docId, function () {}); });
-  document.getElementById("hideBtn").addEventListener("click", function () { document.body.classList.add("noChrome"); });
-  document.getElementById("showBtn").addEventListener("click", function () { document.body.classList.remove("noChrome"); });
+  // ===== נורית סנכרון: ירוק = מסונכרן, חום = מסנכרן, אפור = לא מחובר, אדום = שגיאה =====
+  var dotEl = document.getElementById("dovDot");
+  function dovStatusColor(t) {
+    t = t || "";
+    if (t.indexOf("שגיא") >= 0 || t.indexOf("⚠️") >= 0) return "#e03e3e";
+    if (t.indexOf("מסנכרן") >= 0 || t.indexOf("טוען") >= 0) return "#b08968";
+    if (t.indexOf("מסונכרן") >= 0) return "#0f7b6c";
+    if (t.indexOf("נשמר") >= 0) return (window.dovCloud && dovCloud.spaceId()) ? "#0f7b6c" : "#9b9a97";
+    return "#9b9a97";
+  }
+  function refreshDot() {
+    var t = statusEl.textContent;
+    dotEl.style.background = dovStatusColor(t);
+    dotEl.title = t || "לא מחובר לענן";
+  }
+  new MutationObserver(refreshDot).observe(statusEl, { childList: true, characterData: true, subtree: true });
+  dotEl.addEventListener("click", function () { toast(statusEl.textContent || "לא מחובר לענן"); });
+  refreshDot();
+
+  // ===== שליטה בסרגלים: הכל מוסתר כברירת מחדל — נשלט מהעמודה הימנית =====
+  var CHROME_KEY = "dov-canvas-chrome";
+  var chromeState = { bar: false, top: false, bottom: false };
+  try { Object.assign(chromeState, JSON.parse(localStorage.getItem(CHROME_KEY) || "{}")); } catch (e) {}
+
+  function applyChrome() {
+    document.body.classList.toggle("noChrome", !chromeState.bar);
+    var root = document.getElementById("canvasRoot");
+    root.querySelectorAll(".App-menu_top").forEach(function (el) { el.style.display = chromeState.top ? "" : "none"; });
+    root.querySelectorAll("footer, .App-toolbar--mobile, .layer-ui__wrapper__footer, .App-menu_bottom").forEach(function (el) { el.style.display = chromeState.bottom ? "" : "none"; });
+    document.getElementById("railBar").classList.toggle("on", chromeState.bar);
+    document.getElementById("railTools").classList.toggle("on", chromeState.top);
+    document.getElementById("railBottom").classList.toggle("on", chromeState.bottom);
+  }
+  function toggleChrome(key) {
+    chromeState[key] = !chromeState[key];
+    try { localStorage.setItem(CHROME_KEY, JSON.stringify(chromeState)); } catch (e) {}
+    applyChrome();
+  }
+  document.getElementById("railBar").addEventListener("click", function () { toggleChrome("bar"); });
+  document.getElementById("railTools").addEventListener("click", function () { toggleChrome("top"); });
+  document.getElementById("railBottom").addEventListener("click", function () { toggleChrome("bottom"); });
+  document.getElementById("hideBtn").addEventListener("click", function () { toggleChrome("bar"); });
+  applyChrome();
+  setInterval(applyChrome, 900); // Excalidraw בונה מחדש את הסרגלים בשינוי גודל — אוכפים את המצב שוב ושוב
 
   buildCanvas();
 
