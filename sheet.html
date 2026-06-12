@@ -76,7 +76,7 @@
     align-items: center; justify-content: center; z-index: 100000;
   }
   #showBtn:hover { opacity: 1; }
-  body.toolbar-hidden #showBtn { display: flex; }
+  body.toolbar-hidden #showBtn { display: none; }
 
   /* פריטי התפריט המורחב בקליק ימני */
   #dovExtraMenu { direction: rtl; text-align: right; border-top: 1px solid #e1e1e1; margin-top: 4px; padding-top: 4px; }
@@ -125,6 +125,8 @@
   #dovExtraMenu .dov-arrow { float: left; color: #9b9a97; font-size: 11px; }
 
   .dovSwatch.sel { outline: 2px solid #2383e2; outline-offset: 1px; }
+  .dovBtnRow button.on { background: #2383e2; color: #fff; border-color: #2383e2; font-weight: 700; }
+  .dovBtnRow button.on::before { content: "\2713 "; }
   #luckysheet-scrollbar-x, #luckysheet-scrollbar-y, .luckysheet-scrollbar-x, .luckysheet-scrollbar-y { overscroll-behavior: none; }
 </style>
 </head>
@@ -400,7 +402,7 @@
 
       const tip = document.createElement("div");
       tip.className = "dovLabel";
-      tip.textContent = "כפתור כהה / מסגרת כחולה = העיצוב הפעיל בתא הראשון שסומן. החלון נשאר פתוח לכמה עיצובים ברצף.";
+      tip.textContent = "כפתור כחול עם ✓ / מסגרת כחולה = העיצוב הפעיל בתא הראשון שסומן. החלון נשאר פתוח לכמה עיצובים ברצף.";
       body.appendChild(tip);
 
       refreshAll();
@@ -563,6 +565,56 @@
   // רשת ביטחון להזרקת התפריט גם אם ה-hook לא רץ
   setTimeout(injectExtraMenu, 2000);
   setTimeout(injectExtraMenu, 5000);
+
+  // ----- ריסון תפריטים: שלא יחרגו מגבולות הווידג'ט -----
+  let dovClampPending = false;
+  function dovClampMenus() {
+    dovClampPending = false;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const els = document.querySelectorAll('div[id*="menu"], div[class*="menu"], div[id*="Menu"], div[class*="Menu"]');
+    els.forEach((el) => {
+      if (el.id === "dovExtraMenu") return;
+      if (el.closest && el.closest(".dovOverlay")) return;
+      const cs = window.getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") return;
+      if (cs.position !== "absolute" && cs.position !== "fixed") return;
+      let r = el.getBoundingClientRect();
+      if (r.width < 60 || r.height < 40) return;
+      if (r.height > vh - 8 || r.bottom > vh - 4) {
+        el.style.maxHeight = (vh - 8) + "px";
+        el.style.overflowY = "auto";
+      }
+      if (r.width > vw - 8 || r.right > vw - 4) {
+        el.style.maxWidth = (vw - 8) + "px";
+        el.style.overflowX = "auto";
+      }
+      r = el.getBoundingClientRect();
+      let dx = 0;
+      let dy = 0;
+      if (r.bottom > vh - 4) dy = (vh - 4) - r.bottom;
+      if (r.top + dy < 4) dy = 4 - r.top;
+      if (r.right > vw - 4) dx = (vw - 4) - r.right;
+      if (r.left + dx < 4) dx = 4 - r.left;
+      if (dy) el.style.top = (el.offsetTop + dy) + "px";
+      if (dx) el.style.left = (el.offsetLeft + dx) + "px";
+    });
+  }
+  function dovQueueClamp() {
+    if (dovClampPending) return;
+    dovClampPending = true;
+    setTimeout(dovClampMenus, 30);
+  }
+  try {
+    new MutationObserver(dovQueueClamp).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["style", "class"],
+    });
+  } catch (e) {}
+  window.addEventListener("resize", dovQueueClamp);
+  document.addEventListener("contextmenu", () => { setTimeout(dovClampMenus, 50); setTimeout(dovClampMenus, 150); });
 
   // ----- גלילה, מגע וזום בצביטה -----
   function dovBars() {
