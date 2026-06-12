@@ -116,18 +116,26 @@
     background: #2383e2; z-index: 65; pointer-events: none;
   }
 
-  /* ===== גרסה 0.32: דף נקי ===== */
-  body.top-hidden .toastui-editor-defaultUI-toolbar { display: none !important; }
+  /* ===== דף נקי: הסתרת הסרגל העליון — בלי להשאיר בלוק לבן תקוע ===== */
+  body.top-hidden .toastui-editor-toolbar,
+  body.top-hidden .toastui-editor-defaultUI-toolbar { display: none !important; height: 0 !important; min-height: 0 !important; border: none !important; }
   body.top-hidden .toastui-editor-defaultUI { border-top: none; }
+  body.top-hidden .toastui-editor-defaultUI .toastui-editor-main { height: 100% !important; }
 
   /* נורית סנכרון */
   #dovDot { position: fixed; bottom: 12px; inset-inline-end: 10px; width: 12px; height: 12px; border-radius: 50%; background: #9b9a97; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d3d1cb; cursor: pointer; z-index: 80; }
 
   /* תפריט קליק ימני */
   #dovCtx { position: fixed; z-index: 9300; display: none; flex-direction: column; min-width: 215px; max-height: calc(100vh - 16px); overflow-y: auto; background: #fff; border: 1px solid #e9e9e7; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.16); padding: 4px; direction: rtl; scrollbar-width: thin; }
-  #dovCtx button { border: none; background: none; text-align: right; padding: 7px 10px; font-size: 13.5px; cursor: pointer; border-radius: 6px; color: #37352f; font-family: inherit; white-space: nowrap; }
+  #dovCtx button { border: none; background: none; text-align: right; padding: 7px 10px; font-size: 13.5px; cursor: pointer; border-radius: 6px; color: #37352f; font-family: inherit; white-space: nowrap; flex-shrink: 0; }
   #dovCtx button:hover { background: #f1f1ef; }
   #dovCtx .sep { height: 1px; background: #e9e9e7; margin: 4px 6px; flex-shrink: 0; }
+
+  /* סרגל צף לבחירת טקסט — גישה מהירה לעיצוב */
+  #dovBubble { position: fixed; z-index: 9200; display: none; gap: 2px; align-items: center; background: #fff; border: 1px solid #e9e9e7; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.16); padding: 4px; direction: ltr; max-width: calc(100vw - 12px); overflow-x: auto; scrollbar-width: none; }
+  #dovBubble button { border: none; background: none; border-radius: 6px; min-width: 28px; height: 28px; padding: 0 6px; cursor: pointer; font-size: 13px; color: #37352f; flex-shrink: 0; font-family: inherit; }
+  #dovBubble button:hover { background: #f1f1ef; }
+  .dovBubbleDot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; border: 1px solid #d3d1cb; vertical-align: middle; }
 
   /* נעצים וצילום אזור */
   #pinLayer { display: none; position: fixed; inset: 0; z-index: 9000; cursor: crosshair; background: rgba(11,110,153,.05); }
@@ -181,6 +189,7 @@
   <div id="pinLayer"></div>
   <div id="dovDot" title="מצב סנכרון"></div>
   <div id="dovToast"></div>
+  <div id="dovBubble"></div>
 
 <script src="storage.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -393,6 +402,8 @@
   function setTopHidden(hidden) {
     document.body.classList.toggle("top-hidden", hidden);
     try { localStorage.setItem("dov-md-top", hidden ? "1" : "0"); } catch (e) {}
+    // מאלץ את העורך לחשב מחדש את הגובה — אחרת נשאר אזור לבן "תקוע" במקום הסרגל
+    try { editor.setHeight("100%"); } catch (e) {}
   }
   document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
   document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
@@ -739,7 +750,7 @@
   function showShotModal(canvas) {
     let data = "";
     try { data = canvas.toDataURL("image/png"); } catch (e) {}
-    if (!data) { dovToast("⚠️ הצילום נכשל"); return; }
+    if (!data || data.length < 100) { dovToast("⚠️ הצילום נכשל — נסה שוב"); return; }
     dovModal("📷 צילום המסמך", (box) => {
       const cap = document.createElement("div");
       cap.style.cssText = "background:#e7f3f8;border:1px solid #0b6e99;color:#0b6e99;border-radius:6px;padding:6px 10px;font-size:12.5px;margin-bottom:8px;";
@@ -765,19 +776,36 @@
   function shotFull() {
     const target = currentMode === "view" ? viewerRootEl : (getProseMirror() || document.body);
     dovToast("מצלם את כל המסמך… ⏳");
-    ensureH2C().then(() => window.html2canvas(target, {
-      backgroundColor: "#ffffff",
-      scale: 2,
-      height: target.scrollHeight,
-      windowHeight: target.scrollHeight + 200,
-      onclone: (cd) => {
-        const list = cd.querySelectorAll("#viewerRoot, .ProseMirror");
-        for (let i = 0; i < list.length; i++) {
-          list[i].style.height = "auto";
-          list[i].style.overflow = "visible";
-        }
-      },
-    })).then(showShotModal).catch(() => dovToast("⚠️ הצילום נכשל — בדוק את החיבור לאינטרנט"));
+    // יוצרים עותק של התוכן בגובה מלא (בלי גלילה) מאחורי מסך לבן זמני,
+    // ומצלמים את העותק — כך נכנס לתמונה גם מה שמעבר לגבולות הגלילה.
+    const cover = document.createElement("div");
+    cover.style.cssText = "position:fixed;inset:0;background:#fff;z-index:98000;display:flex;align-items:center;justify-content:center;font-size:14px;color:#787774;";
+    cover.textContent = "📷 מצלם את כל המסמך… ⏳";
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:absolute;left:0;top:0;background:#fff;padding:14px;direction:rtl;z-index:97000;width:" + Math.max(target.clientWidth || 0, 320) + "px;";
+    const clone = target.cloneNode(true);
+    clone.style.height = "auto";
+    clone.style.maxHeight = "none";
+    clone.style.overflow = "visible";
+    clone.removeAttribute("contenteditable");
+    holder.appendChild(clone);
+    document.body.appendChild(holder);
+    document.body.appendChild(cover);
+    function cleanup() {
+      try { document.body.removeChild(holder); } catch (e) {}
+      try { document.body.removeChild(cover); } catch (e) {}
+    }
+    ensureH2C().then(() => {
+      const w = Math.max(holder.scrollWidth, 320);
+      const hgt = Math.max(holder.scrollHeight, 60);
+      // מגבילים את הרזולוציה כדי שמסמך ארוך לא ייצור תמונה גדולה מדי (שנכשלת בשקט)
+      const scale = Math.max(1, Math.min(2, Math.sqrt(12000000 / (w * hgt))));
+      return window.html2canvas(holder, { backgroundColor: "#ffffff", scale: scale, width: w, height: hgt, windowWidth: w + 40, windowHeight: hgt + 40 });
+    }).then((cv) => {
+      cleanup();
+      if (!cv || !cv.width || !cv.height) { dovToast("⚠️ הצילום נכשל — נסה צילום אזור עם נעצים"); return; }
+      showShotModal(cv);
+    }).catch(() => { cleanup(); dovToast("⚠️ הצילום נכשל — נסה צילום אזור עם נעצים"); });
   }
 
   function shotRegion(r) {
@@ -909,6 +937,81 @@
       t.addEventListener("pointerup", up);
     });
   }
+
+  // ===== סרגל צף לבחירת טקסט — גישה מהירה לעיצוב בלי לפתוח תפריט =====
+  const dovBubble = document.getElementById("dovBubble");
+  function hideBubble() { dovBubble.style.display = "none"; }
+  function bubbleExec(cmd, payload) {
+    try { editor.exec(cmd, payload); } catch (e) { dovToast("⚠️ הפקודה לא נתמכה"); }
+  }
+  (function buildBubble() {
+    const items = [
+      ["𝐁", "מודגש", () => bubbleExec("bold")],
+      ["𝐼", "נטוי", () => bubbleExec("italic")],
+      ["S̶", "קו חוצה", () => bubbleExec("strike")],
+      ["</>", "קוד", () => bubbleExec("code")],
+      ["H1", "כותרת 1", () => bubbleExec("heading", { level: 1 })],
+      ["H2", "כותרת 2", () => bubbleExec("heading", { level: 2 })],
+      ["H3", "כותרת 3", () => bubbleExec("heading", { level: 3 })],
+      ["•", "רשימת תבליטים", () => bubbleExec("bulletList")],
+      ["☑", "רשימת משימות", () => bubbleExec("taskList")],
+      ["❝", "ציטוט", () => bubbleExec("blockQuote")],
+    ];
+    items.forEach((it) => {
+      const b = document.createElement("button");
+      b.textContent = it[0];
+      b.title = it[1];
+      b.addEventListener("mousedown", (ev) => ev.preventDefault()); // שומר על הסימון בזמן הלחיצה
+      b.addEventListener("click", it[2]);
+      dovBubble.appendChild(b);
+    });
+    [["#37352f", "רגיל"], ["#e03e3e", "אדום"], ["#0b6e99", "כחול"], ["#0f7b6c", "ירוק"], ["#d9730d", "כתום"]].forEach((c) => {
+      const b = document.createElement("button");
+      const dot = document.createElement("span");
+      dot.className = "dovBubbleDot";
+      dot.style.background = c[0];
+      b.title = "צבע טקסט: " + c[1];
+      b.appendChild(dot);
+      b.addEventListener("mousedown", (ev) => ev.preventDefault());
+      b.addEventListener("click", () => bubbleExec("color", { selectedColor: c[0] }));
+      dovBubble.appendChild(b);
+    });
+  })();
+  function maybeShowBubble() {
+    if (currentMode !== "edit") { hideBubble(); return; }
+    const pm = getProseMirror();
+    const sel = window.getSelection();
+    if (!pm || !sel || sel.rangeCount === 0 || sel.isCollapsed) { hideBubble(); return; }
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el || !pm.contains(el)) { hideBubble(); return; }
+    const rect = range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) { hideBubble(); return; }
+    dovBubble.style.display = "flex";
+    dovBubble.style.visibility = "hidden";
+    dovBubble.style.top = "0px";
+    dovBubble.style.left = "0px";
+    const bw = dovBubble.offsetWidth;
+    const bh = dovBubble.offsetHeight;
+    let top = rect.top - bh - 8;
+    if (top < 4) top = rect.bottom + 8;
+    let left = rect.left + rect.width / 2 - bw / 2;
+    left = Math.max(4, Math.min(left, window.innerWidth - bw - 4));
+    dovBubble.style.top = top + "px";
+    dovBubble.style.left = left + "px";
+    dovBubble.style.visibility = "visible";
+  }
+  document.addEventListener("mouseup", (e) => {
+    if (dovBubble.contains(e.target)) return;
+    setTimeout(maybeShowBubble, 10);
+  });
+  document.addEventListener("keyup", (e) => {
+    if ((e.key && e.key.indexOf("Arrow") === 0) || e.key === "Shift") setTimeout(maybeShowBubble, 10);
+  });
+  document.addEventListener("mousedown", (e) => { if (!dovBubble.contains(e.target)) hideBubble(); });
+  document.addEventListener("scroll", hideBubble, true);
+  document.addEventListener("contextmenu", hideBubble, true);
 
   // ===== תפריט קליק ימני — הגישה לכל האפשרויות =====
   const dovCtx = document.getElementById("dovCtx");
