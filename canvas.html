@@ -20,12 +20,13 @@
   #spacer { display: none; height: 42px; flex: none; }
   body.noChrome #spacer { display: block; }
   body.noChrome #bar { display: none; }
-  #canvasRoot { flex: 1; min-height: 0; position: relative; }
+  #canvasRoot { flex: 1; min-height: 0; position: relative; margin-right: 46px; }
+  #bgLines { display: none; position: fixed; inset: 0 46px 0 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(55,53,47,.08) 27px, rgba(55,53,47,.08) 28px); }
   #canvasRoot > div { width: 100%; height: 100%; }
   #saveStatus { display: none; }
 
   /* ===== העמודה הימנית: שליטה בסרגלים + נורית סנכרון ===== */
-  #dovRail { position: fixed; bottom: 64px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
+  #dovRail { position: fixed; top: 50%; right: 6px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
   #dovRail button { width: 34px; height: 34px; border: 1px solid #d3d1cb; background: #fff; border-radius: 8px; cursor: pointer; font-size: 15px; padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
   #dovRail button:hover { background: #f1f1ef; }
   #dovRail button.on { border-color: #0b6e99; background: #e7f3f8; }
@@ -67,10 +68,12 @@
 </div>
 <div id="spacer"></div>
 <div id="canvasRoot"></div>
+<div id="bgLines"></div>
 <div id="dovRail">
   <button id="railBar" title="סרגל הקובץ — פתק, מיקומים, ייצוא, קישור">🗂️</button>
   <button id="railTools" title="סרגל כלים — צורות, טקסט, תמונה">🧰</button>
   <button id="railBottom" title="סרגל תחתון — צבעים, ביטול וחזרה, תפריט">🎛️</button>
+  <button id="railBg" title="רקע: רשת / שורות / ריק">🔲</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
 <div id="errBanner"></div>
@@ -181,13 +184,14 @@
   // ===== בניית הקנבס =====
   function buildCanvas() {
     if (!window.React || !window.ReactDOM || !window.ExcalidrawLib) {
-      dovErr("ספריית הקנבס לא נטענה — בדוק חי��ור לאינטרנט ורענן את הדף");
+      dovErr("ספריית הקנבס לא נטענה — בדוק חי��ור לאינטרנט ורענן את ה��ף");
       statusEl.textContent = "⚠️ הקנבס לא נטען";
       return;
     }
     var props = {
       excalidrawAPI: function (a) {
         api = a;
+        applyBg(); // מחילים את רקע הרשת/שורות לפי ההעדפה השמורה
         // קובעים חתימת בסיס מיד אחרי הטעינה — כך פתיחת הדף לבדה לא מפעילה סנכרון
         setTimeout(function () { try { lastSig = contentSig(snapshotCanvas()); } catch (e) {} }, 300);
       },
@@ -452,6 +456,25 @@
   document.getElementById("railBar").addEventListener("click", function () { toggleChrome("bar"); });
   document.getElementById("railTools").addEventListener("click", function () { toggleChrome("top"); });
   document.getElementById("railBottom").addEventListener("click", function () { toggleChrome("bottom"); });
+
+  // ===== רקע הקנבס: רשת (ברירת מחדל) / שורות / ריק =====
+  var BG_KEY = "dov-canvas-bg";
+  var bgMode = "grid";
+  try { bgMode = localStorage.getItem(BG_KEY) || "grid"; } catch (e) {}
+  var bgNames = { grid: "רשת ▦", lines: "שורות ≡", blank: "ריק" };
+  function applyBg() {
+    document.getElementById("bgLines").style.display = bgMode === "lines" ? "block" : "none";
+    if (api) {
+      try { api.updateScene({ appState: { gridSize: bgMode === "grid" ? 20 : null } }); } catch (e) {}
+    }
+  }
+  document.getElementById("railBg").addEventListener("click", function () {
+    bgMode = bgMode === "grid" ? "lines" : bgMode === "lines" ? "blank" : "grid";
+    try { localStorage.setItem(BG_KEY, bgMode); } catch (e) {}
+    applyBg();
+    toast("רקע: " + bgNames[bgMode]);
+  });
+  applyBg();
   document.getElementById("hideBtn").addEventListener("click", function () { toggleChrome("bar"); });
   applyChrome();
   setInterval(applyChrome, 900); // Excalidraw בונה מחדש את הסרגלים בשינוי גודל — אוכפים את המצב שוב ושוב
