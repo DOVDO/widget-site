@@ -36,13 +36,13 @@
   #pinLayer { display: none; position: fixed; inset: 0 46px 0 0; z-index: 9000; cursor: crosshair; background: rgba(11,110,153,.05); }
   .dovPinMark { position: absolute; transform: translate(-50%, -100%); font-size: 22px; pointer-events: none; }
   #pinHint { position: absolute; top: 8px; right: 8px; background: #0b6e99; color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
-  #pinRect { position: absolute; border: 2px dashed #0b6e99; background: rgba(11,110,153,.06); box-shadow: 0 0 0 100000px rgba(15,15,15,.28); cursor: move; touch-action: none; }
+  #pinRect { position: absolute; pointer-events: auto; border: 2px dashed #0b6e99; background: rgba(11,110,153,.06); box-shadow: 0 0 0 100000px rgba(15,15,15,.28); cursor: move; touch-action: none; }
   .pinHandle { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; }
   .pinHandle.nw { top: -9px; left: -9px; cursor: nwse-resize; }
   .pinHandle.ne { top: -9px; right: -9px; cursor: nesw-resize; }
   .pinHandle.sw { bottom: -9px; left: -9px; cursor: nesw-resize; }
   .pinHandle.se { bottom: -9px; right: -9px; cursor: nwse-resize; }
-  #pinBar { position: absolute; display: flex; gap: 6px; align-items: center; background: #fff; border: 1px solid #d3d1cb; border-radius: 8px; padding: 4px 8px; box-shadow: 0 2px 10px rgba(0,0,0,.18); font-size: 13px; white-space: nowrap; }
+  #pinBar { position: absolute; pointer-events: auto; display: flex; gap: 6px; align-items: center; background: #fff; border: 1px solid #d3d1cb; border-radius: 8px; padding: 4px 8px; box-shadow: 0 2px 10px rgba(0,0,0,.18); font-size: 13px; white-space: nowrap; }
   #pinBar button { border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; cursor: pointer; padding: 3px 10px; font-size: 13px; }
   #pinBar button.primary { background: #0b6e99; color: #fff; border-color: #0b6e99; }
   #pinBar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
@@ -409,26 +409,18 @@
   function safeName() { return ((docRec.name || "canvas").replace(/[\\/:*?"<>|]/g, "-")); }
 
   // העתקת תמונה — אותה דרך כמו בגיליון: קודם execCommand (עובד בהטמעה), ורק אז ה־ API החדש
-  function copyImageData(dataUrl, blob) {
+  function copyImageData(stagedImg, blob) {
+    if (stagedImg && !stagedImg.dataset.ready) { toast("התמונה עדיין נטענת — נסה שוב בעוד רגע"); return; }
     var ok = false;
-    if (dataUrl) {
+    if (stagedImg) {
       try {
-        var holder = document.createElement("div");
-        holder.contentEditable = "true";
-        holder.style.position = "fixed";
-        holder.style.opacity = "0";
-        var im = document.createElement("img");
-        im.src = dataUrl;
-        holder.appendChild(im);
-        document.body.appendChild(holder);
         var rng = document.createRange();
-        rng.selectNode(im);
+        rng.selectNode(stagedImg);
         var selObj = window.getSelection();
         selObj.removeAllRanges();
         selObj.addRange(rng);
         ok = document.execCommand("copy");
         selObj.removeAllRanges();
-        document.body.removeChild(holder);
       } catch (e) { ok = false; }
     }
     if (ok) { toast("התמונה הועתקה ✓ — הדבק בנושן עם Ctrl+V"); return; }
@@ -439,12 +431,12 @@
         catch (e2) { item = new ClipboardItem({ "image/png": Promise.resolve(blob) }); }
         navigator.clipboard.write([item]).then(
           function () { toast("התמונה הועתקה ✓ — הדבק בנושן עם Ctrl+V"); },
-          function () { toast("⚠️ ההעתקה נחסמה — השתמש בהורדת PNG"); }
+          function () { toast("⚠️ נחסם — קליק ימני על התמונה ← \"העתקת תמונה\""); }
         );
         return;
       }
     } catch (e3) {}
-    toast("⚠️ ההעתקה נחסמה — השתמש בהורדת PNG");
+    toast("⚠️ נחסם — קליק ימני על התמונה ← \"העתקת תמונה\"");
   }
 
   var jspdfPromise = null;
@@ -483,11 +475,22 @@
 
   function showExportModal(title, blob, hintText) {
     var url = URL.createObjectURL(blob);
-    // מכינים את התמונה מראש — כך לחיצת ההעתקה נשארת סינכרונית (תנאי ל־ execCommand)
-    var dataUrl = null;
+    // מכינים מראש עותק טעון ומפוענח של התמונה בתוך אזור עריכה נסתר —
+    // כך ההעתקה גם נשארת סינכרונית וגם מעתיקה תמונה אמיתית (לא בחירה ריקה)
+    if (window.__dovCopyStage) { try { document.body.removeChild(window.__dovCopyStage); } catch (e0) {} }
+    var stage = document.createElement("div");
+    stage.contentEditable = "true";
+    stage.style.cssText = "position:fixed;left:0;top:0;opacity:0;pointer-events:none;z-index:0;";
+    var stagedImg = document.createElement("img");
     var fr = new FileReader();
-    fr.onload = function () { dataUrl = fr.result; };
+    fr.onload = function () {
+      stagedImg.onload = function () { stagedImg.dataset.ready = "1"; };
+      stagedImg.src = fr.result;
+    };
     fr.readAsDataURL(blob);
+    stage.appendChild(stagedImg);
+    document.body.appendChild(stage);
+    window.__dovCopyStage = stage;
     dovModal(title, function (box) {
       var img = document.createElement("img");
       img.src = url;
@@ -501,7 +504,7 @@
         b.addEventListener("click", fn);
         row.appendChild(b);
       }
-      btn("📋 העתקת תמונה", function () { copyImageData(dataUrl, blob); }, true);
+      btn("📋 העתקת תמונה", function () { copyImageData(stagedImg, blob); }, true);
       btn("⬇️ PNG", function () {
         var a = document.createElement("a");
         a.href = url;
@@ -515,6 +518,10 @@
       hint.className = "hint";
       hint.textContent = hintText;
       box.appendChild(hint);
+      var hint2 = document.createElement("div");
+      hint2.className = "hint";
+      hint2.textContent = "💡 גיבוי שתמיד עובד: קליק ימני על התמונה למעלה ← \"העתקת תמונה\"";
+      box.appendChild(hint2);
     });
   }
 
@@ -534,6 +541,9 @@
     pinRectEl = null;
     pinToolbar = null;
     pinLayer.style.display = "none";
+    pinLayer.style.pointerEvents = "";
+    pinLayer.style.background = "";
+    pinLayer.style.cursor = "";
     pinLayer.innerHTML = "";
   }
   document.getElementById("railPins").addEventListener("click", function () {
@@ -589,6 +599,11 @@
     pinToolbar.addEventListener("click", function (e) { e.stopPropagation(); });
     pinLayer.appendChild(pinRectEl);
     pinLayer.appendChild(pinToolbar);
+    // משחררים את השכבה: מעכשיו הקנבס שמתחת חי (זום, גרירה, עריכה) —
+    // רק המסגרת, הידיות והסרגל ממשיכים לתפוס את העכבר
+    pinLayer.style.pointerEvents = "none";
+    pinLayer.style.background = "transparent";
+    pinLayer.style.cursor = "default";
     positionPinRect();
     initPinDrag();
   }
@@ -644,7 +659,7 @@
       if (includePartial) return x1 < r.x2 && x2 > r.x1 && y1 < r.y2 && y2 > r.y1;
       return x1 >= r.x1 && x2 <= r.x2 && y1 >= r.y1 && y2 <= r.y2;
     });
-    // שתי פינות שקופות שמכריחות את החיתוך להיות בדיוק המלבן שבין הנעצים
+    // שתי פינות שקופות שמכריחות את ה��יתוך להיות בדיוק המלבן שבין הנעצים
     var corners = ExcalidrawLib.convertToExcalidrawElements([
       { type: "rectangle", x: r.x1, y: r.y1, width: 1, height: 1, opacity: 0 },
       { type: "rectangle", x: r.x2 - 1, y: r.y2 - 1, width: 1, height: 1, opacity: 0 }
