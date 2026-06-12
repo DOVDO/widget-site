@@ -26,7 +26,9 @@
   #saveStatus { display: none; }
 
   /* ===== העמודה הימנית: שליטה בסרגלים + נורית סנכרון ===== */
-  #dovRail { position: fixed; top: 50%; right: 6px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
+  #dovRail { position: fixed; top: 50%; right: 6px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 8500; max-height: calc(100vh - 12px); overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 2px; }
+  #dovRail::-webkit-scrollbar { display: none; }
+  #dovRail button { flex-shrink: 0; }
   #dovRail button { width: 34px; height: 34px; border: 1px solid #d3d1cb; background: #fff; border-radius: 8px; cursor: pointer; font-size: 15px; padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
   #dovRail button:hover { background: #f1f1ef; }
   #dovRail button.on { border-color: #0b6e99; background: #e7f3f8; }
@@ -49,6 +51,15 @@
   .pinMove { position: absolute; pointer-events: auto; touch-action: none; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; cursor: move; font-size: 16px; color: #0b6e99; box-shadow: 0 2px 8px rgba(0,0,0,.25); user-select: none; }
   .dovListItem { display: block; width: 100%; text-align: right; border: 1px solid #e3e2de; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
   .dovListItem:hover { background: #f1f1ef; }
+
+  /* ===== פאנל עיצוב מהיר ===== */
+  #stylePanel { display: none; position: fixed; top: 50%; right: 50px; transform: translateY(-50%); z-index: 9100; background: #fff; border: 1px solid #d3d1cb; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.22); padding: 10px; width: 218px; max-height: calc(100vh - 20px); overflow-y: auto; direction: rtl; font-size: 12.5px; }
+  #stylePanel h4 { margin: 8px 0 4px; font-size: 12px; color: #787774; font-weight: 600; }
+  #stylePanel h4:first-child { margin-top: 0; }
+  .spRow { display: flex; flex-wrap: wrap; gap: 4px; }
+  .spRow button { border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; cursor: pointer; padding: 4px 8px; font-size: 12.5px; min-width: 30px; }
+  .spRow button:hover { background: #f1f1ef; }
+  .spSwatch { width: 24px; height: 24px; min-width: 24px !important; padding: 0 !important; border-radius: 6px; }
 
   /* ===== שגיאות ===== */
   #errBanner { display: none; position: fixed; top: 46px; inset-inline: 8px; z-index: 99999; background: #fbe4e4; color: #e03e3e; border: 1px solid #e03e3e; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; }
@@ -80,7 +91,7 @@
   <button id="viewsBtn" title="מיקומים שמורים בקנבס">📍 מיקומים</button>
   <button id="exportBtn" title="ייצוא והדפסה של המסומן או של הכל">🖨️ ייצוא</button>
   <button id="copyUrlBtn" title="העתקת קישור הקובץ (להטמעה בנושן)">📋 קישור</button>
-  <button id="linksBtn" title="היכן הקובץ משובץ בנושן">🔗</button>
+  <button id="linksBtn" title="היכן הקובץ משובץ בנ��שן">🔗</button>
   <button id="hideBtn" title="הסתרת הסרגל — מסך נקי">👁️ הסתר</button>
   <span id="saveStatus">טוען…</span>
 </div>
@@ -95,6 +106,7 @@
   <button id="railPins" title="צילום אזור בין 2 נעצים">📌</button>
   <button id="railSync" title="רענון וסנכרון מהענן">🔄</button>
   <button id="railList" title="כל האובייקטים בקנבס — קפיצה מהירה">🧭</button>
+  <button id="railStyle" title="עיצוב האובייקט המסומן — צבעים, קו, מילוי ועוד">🎨</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
 <div id="pinLayer"></div>
@@ -498,18 +510,28 @@
     stage.contentEditable = "true";
     stage.style.cssText = "position:fixed;left:0;top:0;opacity:0;pointer-events:none;z-index:0;";
     var stagedImg = document.createElement("img");
+    var previewImg = null;
     var fr = new FileReader();
     fr.onload = function () {
       stagedImg.onload = function () { stagedImg.dataset.ready = "1"; };
       stagedImg.src = fr.result;
+      // מחליפים גם את תמונת התצוגה לכתובת data — בדיוק כמו בגיליון,
+      // שם קליק ימני ← \"העתקת תמונה\" באמת מעתיק
+      if (previewImg) previewImg.src = fr.result;
     };
     fr.readAsDataURL(blob);
     stage.appendChild(stagedImg);
     document.body.appendChild(stage);
     window.__dovCopyStage = stage;
     dovModal(title, function (box) {
+      var cap = document.createElement("div");
+      cap.style.cssText = "background:#e7f3f8;border:1px solid #0b6e99;color:#0b6e99;border-radius:6px;padding:6px 10px;font-size:12.5px;margin-bottom:8px;";
+      cap.textContent = "🖱 קליק ימני על התמונה ← \"העתקת תמונה\" — הדרך שתמיד עובדת";
+      box.appendChild(cap);
       var img = document.createElement("img");
       img.src = url;
+      img.style.maxWidth = "100%";
+      previewImg = img;
       box.appendChild(img);
       var row = document.createElement("div");
       row.className = "btnRow";
@@ -536,7 +558,7 @@
       box.appendChild(hint);
       var hint2 = document.createElement("div");
       hint2.className = "hint";
-      hint2.textContent = "💡 גיבוי שתמיד עובד: קליק ימני על התמונה למעלה ← \"העתקת תמונה\"";
+      hint2.textContent = "אפשר גם לגרור את התמונה ישירות לדף נושן.";
       box.appendChild(hint2);
     });
   }
@@ -758,6 +780,138 @@
       });
       box.appendChild(list);
     });
+  });
+
+  // ===== פאנל עיצוב מהיר: כל הגדרות האובייקט ישירות מהסרגל =====
+  var stylePanel = document.createElement("div");
+  stylePanel.id = "stylePanel";
+  document.body.appendChild(stylePanel);
+  var spColors = ["#1e1e1e", "#e03e3e", "#2f9e44", "#1971c2", "#f08c00", "#6940a5", "#ad1a72", "#ffffff"];
+  var spBgs = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffec99", "#eae4f2", "#f1f1ef"];
+  function spSelected() {
+    var ids = api.getAppState().selectedElementIds || {};
+    return api.getSceneElements().filter(function (el) { return ids[el.id]; });
+  }
+  function spApply(props, textOnly) {
+    if (!api) return;
+    var ids = api.getAppState().selectedElementIds || {};
+    var any = false;
+    var els = api.getSceneElements().map(function (el) {
+      if (!ids[el.id]) return el;
+      if (textOnly && el.type !== "text") return el;
+      any = true;
+      var n = {};
+      for (var k in el) n[k] = el[k];
+      for (var p in props) n[p] = props[p];
+      return n;
+    });
+    if (!any) { toast("סמן קודם אובייקט בקנבס — ואז בחר עיצוב"); return; }
+    api.updateScene({ elements: els });
+    scheduleSave();
+  }
+  function spSection(title) {
+    var h = document.createElement("h4");
+    h.textContent = title;
+    stylePanel.appendChild(h);
+    var r = document.createElement("div");
+    r.className = "spRow";
+    stylePanel.appendChild(r);
+    return r;
+  }
+  function spBtn(row, label, fn) {
+    var b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("click", fn);
+    row.appendChild(b);
+    return b;
+  }
+  function spSwatch(row, color, fn) {
+    var b = document.createElement("button");
+    b.className = "spSwatch";
+    b.style.background = color === "transparent" ? "repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 0 0 / 10px 10px" : color;
+    b.title = color === "transparent" ? "שקוף" : color;
+    b.addEventListener("click", fn);
+    row.appendChild(b);
+  }
+  (function buildStylePanel() {
+    var r1 = spSection("צבע קו");
+    spColors.forEach(function (c) { spSwatch(r1, c, function () { spApply({ strokeColor: c }); }); });
+    var ci = document.createElement("input");
+    ci.type = "color";
+    ci.title = "צבע מותאם אישית";
+    ci.style.cssText = "width:30px;height:26px;border:1px solid #d3d1cb;border-radius:6px;padding:0;background:#fff;cursor:pointer;";
+    ci.addEventListener("change", function () { spApply({ strokeColor: ci.value }); });
+    r1.appendChild(ci);
+    var r2 = spSection("צבע רקע / מילוי");
+    spBgs.forEach(function (c) { spSwatch(r2, c, function () { spApply({ backgroundColor: c }); }); });
+    var bi = document.createElement("input");
+    bi.type = "color";
+    bi.title = "רקע מותאם אישית";
+    bi.style.cssText = ci.style.cssText;
+    bi.addEventListener("change", function () { spApply({ backgroundColor: bi.value }); });
+    r2.appendChild(bi);
+    var r3 = spSection("סגנון מילוי");
+    spBtn(r3, "▤ קווים", function () { spApply({ fillStyle: "hachure" }); });
+    spBtn(r3, "▦ שתי וערב", function () { spApply({ fillStyle: "cross-hatch" }); });
+    spBtn(r3, "■ מלא", function () { spApply({ fillStyle: "solid" }); });
+    var r4 = spSection("עובי קו");
+    spBtn(r4, "דק", function () { spApply({ strokeWidth: 1 }); });
+    spBtn(r4, "בינוני", function () { spApply({ strokeWidth: 2 }); });
+    spBtn(r4, "עבה", function () { spApply({ strokeWidth: 4 }); });
+    var r5 = spSection("סגנון קו");
+    spBtn(r5, "── רציף", function () { spApply({ strokeStyle: "solid" }); });
+    spBtn(r5, "- - מקווקו", function () { spApply({ strokeStyle: "dashed" }); });
+    spBtn(r5, "··· נקודות", function () { spApply({ strokeStyle: "dotted" }); });
+    var r6 = spSection("סגנון ציור");
+    spBtn(r6, "מדויק", function () { spApply({ roughness: 0 }); });
+    spBtn(r6, "אומנותי", function () { spApply({ roughness: 1 }); });
+    spBtn(r6, "משורבט", function () { spApply({ roughness: 2 }); });
+    var r7 = spSection("פינות");
+    spBtn(r7, "חדות", function () { spApply({ roundness: null }); });
+    spBtn(r7, "מעוגלות", function () { spApply({ roundness: { type: 3 } }); });
+    var r8 = spSection("גודל טקסט");
+    [["S", 16], ["M", 20], ["L", 28], ["XL", 36]].forEach(function (p) {
+      spBtn(r8, p[0], function () { spApply({ fontSize: p[1] }, true); });
+    });
+    var r9 = spSection("גופן");
+    spBtn(r9, "✏️ כתב יד", function () { spApply({ fontFamily: 1 }, true); });
+    spBtn(r9, "A רגיל", function () { spApply({ fontFamily: 2 }, true); });
+    spBtn(r9, "</> קוד", function () { spApply({ fontFamily: 3 }, true); });
+    var r10 = spSection("יישור טקסט");
+    spBtn(r10, "ימין", function () { spApply({ textAlign: "right" }, true); });
+    spBtn(r10, "מרכז", function () { spApply({ textAlign: "center" }, true); });
+    spBtn(r10, "שמאל", function () { spApply({ textAlign: "left" }, true); });
+    var r11 = spSection("שקיפות");
+    var op = document.createElement("input");
+    op.type = "range";
+    op.min = "10";
+    op.max = "100";
+    op.step = "10";
+    op.value = "100";
+    op.style.width = "100%";
+    op.addEventListener("change", function () { spApply({ opacity: Number(op.value) }); });
+    r11.appendChild(op);
+    var r12 = spSection("סדר שכבות");
+    spBtn(r12, "⬆ לקדמה", function () { spReorder("front"); });
+    spBtn(r12, "⬇ לרקע", function () { spReorder("back"); });
+    var r13 = spSection("פעולות");
+    spBtn(r13, "🗑 מחיקה", function () { spApply({ isDeleted: true }); });
+  })();
+  function spReorder(where) {
+    if (!api) return;
+    var ids = api.getAppState().selectedElementIds || {};
+    var els = api.getSceneElements();
+    var sel = els.filter(function (el) { return ids[el.id]; });
+    if (!sel.length) { toast("סמן קודם אובייקט בקנבס"); return; }
+    var rest = els.filter(function (el) { return !ids[el.id]; });
+    api.updateScene({ elements: where === "front" ? rest.concat(sel) : sel.concat(rest) });
+    scheduleSave();
+  }
+  document.getElementById("railStyle").addEventListener("click", function () {
+    var on = stylePanel.style.display === "block";
+    stylePanel.style.display = on ? "none" : "block";
+    document.getElementById("railStyle").classList.toggle("on", !on);
+    if (!on && api && !spSelected().length) toast("טיפ: סמן אובייקט בקנבס — וכל שינוי יחול עליו מיד");
   });
 
   // ===== שאר כפתורי הסרגל =====
