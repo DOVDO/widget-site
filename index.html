@@ -33,6 +33,11 @@
   .actions button:hover { background: #f1f1ef; }
   .actions button.primary { background: #2383e2; border-color: #2383e2; color: #fff; }
   .actions button.primary:hover { background: #1b6ec2; }
+  #sortSel { border: 1px solid #d3d3d0; border-radius: 6px; padding: 4px 6px; font-size: 12.5px; font-family: inherit; background: #fff; color: #37352f; }
+  #bulkBar { display: none; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; background: #eef6fc; border: 1px solid #cde6f7; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
+  #bulkBar button { border: 1px solid #d3d3d0; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit; }
+  #bulkBar button:hover { background: #f1f1ef; }
+  #bulkBar #bulkDelete { color: #c4554d; }
 
   main { flex: 1; }
   .empty { color: #9b9a97; font-size: 13.5px; text-align: center; padding: 22px 0; }
@@ -124,6 +129,7 @@
       <button class="bigBtn" id="homeNewSheet"><span class="big">📊</span>גיליון חדש</button>
       <button class="bigBtn" id="homeNewCanvas"><span class="big">🎨</span>קנבס חדש</button>
       <button class="bigBtn alt" id="openExplorerBtn"><span class="big">🗂️</span>סייר הקבצים</button>
+      <button class="bigBtn alt" id="openSearchBtn"><span class="big">🔍</span>חיפוש</button>
     </div>
     <details id="recentBox" open>
       <summary>🕘 אחרונים</summary>
@@ -141,12 +147,25 @@
         <button id="newSheetBtn" class="primary">➕ גיליון</button>
         <button id="newCanvasBtn" class="primary">➕ קנבס</button>
         <button id="newFolderBtn">📁 תיקייה</button>
+        <select id="sortSel" title="מיון הקבצים">
+          <option value="updated">⇅ שינוי אחרון</option>
+          <option value="created">⇅ תאריך יצירה</option>
+          <option value="name">⇅ שם</option>
+          <option value="type">⇅ סוג</option>
+          <option value="size">⇅ גודל</option>
+        </select>
       </div>
     </header>
+    <div id="bulkBar">
+      <span id="bulkCount"></span>
+      <button id="bulkMove">📂 העברה</button>
+      <button id="bulkDelete">🗑️ מחיקה</button>
+      <button id="bulkClear">✖ בטל בחירה</button>
+    </div>
     <main id="list"></main>
   </div>
 
-  <footer>גרסה 0.33</footer>
+  <footer>גרסה 0.34</footer>
 
   <div id="moveOverlay">
     <div id="moveBox">
@@ -165,6 +184,121 @@
 <script src="links-ui.js"></script>
 <script>
   let currentFolderId = null;
+
+  // ===== בחירה מרובה ומיון בסייר =====
+  const selectedIds = new Set();
+  let sortBy = "updated";
+  try { sortBy = localStorage.getItem("dov-explorer-sort") || "updated"; } catch (e) {}
+
+  function docSize(d) {
+    let n = (d.content || "").length + (d.name || "").length;
+    try { if (d.data) n += JSON.stringify(d.data).length; } catch (e) {}
+    return n;
+  }
+  function fmtSize(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + " MB";
+    if (n >= 1000) return Math.round(n / 1000) + " KB";
+    return n + " B";
+  }
+  function sortDocs(list2) {
+    const arr = list2.slice();
+    if (sortBy === "name") arr.sort((a, b) => (a.name || "").localeCompare(b.name || "", "he"));
+    else if (sortBy === "created") arr.sort((a, b) => (b.created || "").localeCompare(a.created || ""));
+    else if (sortBy === "type") arr.sort((a, b) => (a.type || "").localeCompare(b.type || "") || (b.updated || "").localeCompare(a.updated || ""));
+    else if (sortBy === "size") arr.sort((a, b) => docSize(b) - docSize(a));
+    else arr.sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+    return arr;
+  }
+  function updateBulkBar() {
+    const bar = document.getElementById("bulkBar");
+    bar.style.display = selectedIds.size ? "flex" : "none";
+    document.getElementById("bulkCount").textContent = "נבחרו " + selectedIds.size + " קבצים";
+  }
+
+  // ===== חיפוש =====
+  function typeName(d) { return d.type === "sheet" ? "גיליון" : d.type === "canvas" ? "קנבס" : "מסמך"; }
+  function docHaystack(d) {
+    const parts = [d.name || "", typeName(d), d.type || "", fmtDate(d.created), fmtDate(d.updated)];
+    (d.links || []).forEach((l) => {
+      parts.push(l.url || "", l.note || "");
+      parts.push((l.kind === "page" || (!l.kind && (l.url || "").indexOf("#") < 0)) ? "קישור דף" : "קישור בלוק");
+    });
+    return parts.join(" | ").toLowerCase();
+  }
+  function openSearch() {
+    const d = dovDlg();
+    d.box.style.maxWidth = "480px";
+    const h = document.createElement("h3");
+    h.textContent = "🔍 חיפוש קבצים";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.placeholder = "שם, תאריך (12.06.2026), או קישור נושן (בלוק/דף)…";
+    const typeRow = document.createElement("div");
+    typeRow.className = "dlgRow";
+    typeRow.style.cssText = "margin-bottom:10px;flex-wrap:wrap;";
+    let typeFilter = "";
+    const typeBtns = [];
+    [["הכל", ""], ["📝 מסמכים", "markdown"], ["📊 גיליונות", "sheet"], ["🎨 קנבסים", "canvas"]].forEach(([label, val]) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      if (val === "") b.className = "primary";
+      b.addEventListener("click", () => {
+        typeFilter = val;
+        typeBtns.forEach((x) => { x.className = x === b ? "primary" : ""; });
+        run();
+      });
+      typeBtns.push(b);
+      typeRow.appendChild(b);
+    });
+    const res = document.createElement("div");
+    function run() {
+      res.innerHTML = "";
+      const tokens = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      let docs = listAllDocs().filter((x) => !typeFilter || x.type === typeFilter);
+      if (tokens.length) docs = docs.filter((x) => { const hay = docHaystack(x); return tokens.every((t) => hay.indexOf(t) >= 0); });
+      if (!docs.length) {
+        const e2 = document.createElement("div");
+        e2.className = "empty";
+        e2.textContent = "לא נמצא כלום 🤷";
+        res.appendChild(e2);
+        return;
+      }
+      docs.slice(0, 30).forEach((x) => res.appendChild(docRow(x, true)));
+    }
+    inp.addEventListener("input", run);
+    d.box.appendChild(h);
+    d.box.appendChild(inp);
+    d.box.appendChild(typeRow);
+    d.box.appendChild(res);
+    run();
+    inp.focus();
+  }
+
+  // חיווט הכפתורים החדשים (הסקריפט רץ אחרי שה-DOM קיים)
+  (function () {
+    const sortSel = document.getElementById("sortSel");
+    sortSel.value = sortBy;
+    sortSel.addEventListener("change", () => {
+      sortBy = sortSel.value;
+      try { localStorage.setItem("dov-explorer-sort", sortBy); } catch (e) {}
+      render();
+    });
+    document.getElementById("bulkClear").addEventListener("click", () => { selectedIds.clear(); updateBulkBar(); render(); });
+    document.getElementById("bulkDelete").addEventListener("click", () => {
+      if (!selectedIds.size) return;
+      askConfirm("למחוק " + selectedIds.size + " קבצים?\n\n⚠️ אם חלקם משובצים בנושן — ההטמעות שלהם יפסיקו לעבוד.", () => {
+        selectedIds.forEach((id) => deleteDoc(id));
+        selectedIds.clear();
+        updateBulkBar();
+        refreshAll();
+        toast("נמחקו ✓");
+      }, true);
+    });
+    document.getElementById("bulkMove").addEventListener("click", () => {
+      if (selectedIds.size) openMove(Array.from(selectedIds));
+    });
+    document.getElementById("openSearchBtn").addEventListener("click", openSearch);
+  })();
 
   // ----- דיאלוגים מותאמים: prompt/confirm/alert חסומים בתוך הטמעה של נושן -----
   function dovDlg() {
@@ -287,7 +421,11 @@
   }
 
   function docLink(d) {
-    return new URL((d.type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id), location.href).href;
+    const page = d.type === "sheet" ? "sheet.html" : d.type === "canvas" ? "canvas.html" : "markdown.html";
+    let url = new URL(page + "?id=" + encodeURIComponent(d.id), location.href).href;
+    // מצרפים את מזהה המרחב — כך ההטמעה תתחבר לענן גם אם האחסון המקומי נוקה
+    try { if (window.dovCloud && dovCloud.spaceId()) url += "&space=" + encodeURIComponent(dovCloud.spaceId()); } catch (e) {}
+    return url;
   }
 
   function fmtDate(iso) {
@@ -401,6 +539,7 @@
       if (folder) metaText += " · 📁 " + folder.name;
     }
     if (linkCount) metaText += " · 🔗 משובץ ב-" + linkCount + " מקומות";
+    if (sortBy === "size") metaText += " · 💾 " + fmtSize(docSize(d));
     meta.textContent = metaText;
     main.appendChild(name);
     main.appendChild(meta);
@@ -456,6 +595,20 @@
     btns.appendChild(moveBtn);
     btns.appendChild(renameBtn);
     btns.appendChild(delBtn);
+    if (!inRecents) {
+      // תיבת סימון לבחירה מרובה (מחיקה/העברה של כמה קבצים יחד)
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = selectedIds.has(d.id);
+      cb.title = "בחירה לפעולה קבוצתית";
+      cb.style.cssText = "width:15px;height:15px;flex-shrink:0;cursor:pointer;accent-color:#2383e2;";
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (cb.checked) selectedIds.add(d.id); else selectedIds.delete(d.id);
+        updateBulkBar();
+      });
+      row.appendChild(cb);
+    }
     row.appendChild(icon);
     row.appendChild(main);
     row.appendChild(btns);
@@ -467,7 +620,7 @@
     const listEl = document.getElementById("list");
     listEl.innerHTML = "";
     const folders = listFolders(currentFolderId);
-    const docs = listDocs(currentFolderId);
+    const docs = sortDocs(listDocs(currentFolderId));
     if (!folders.length && !docs.length) {
       const empty = document.createElement("div");
       empty.className = "empty";
@@ -518,15 +671,19 @@
   const moveOverlay = document.getElementById("moveOverlay");
   const moveOptions = document.getElementById("moveOptions");
 
-  function openMove(docId) {
+  function openMove(docIdOrIds) {
+    // תומך גם בקובץ בודד וגם ברשימת קבצים (בחירה מרובה)
+    const ids = Array.isArray(docIdOrIds) ? docIdOrIds : [docIdOrIds];
     moveOptions.innerHTML = "";
     function addOption(label, folderId, depth) {
       const btn = document.createElement("button");
       btn.className = "opt";
       btn.textContent = "\u00a0".repeat(depth * 3) + label;
       btn.addEventListener("click", () => {
-        moveDoc(docId, folderId);
+        ids.forEach((x) => moveDoc(x, folderId));
         moveOverlay.style.display = "none";
+        selectedIds.clear();
+        updateBulkBar();
         refreshAll();
       });
       moveOptions.appendChild(btn);

@@ -148,8 +148,19 @@
 
   // ===== טעינת הקובץ מהאחסון =====
   var qsParams = new URLSearchParams(location.search);
+  // אם הקישור כולל מזהה מרחב (space) — מתחברים אליו אוטומטית גם אם האחסון המקומי נוקה
+  try {
+    var spParam = qsParams.get("space");
+    if (spParam && window.dovCloud && !dovCloud.spaceId()) dovCloud.setSpaceId(spParam);
+  } catch (e) {}
   var docId = qsParams.get("id");
   var docRec = docId ? getDoc(docId) : null;
+  if (!docRec && docId && window.dovCloud && dovCloud.spaceId()) {
+    // הקובץ לא נמצא מקומית (הדפדפן ניקה את האחסון?) — לא יוצרים קובץ חדש וריק!
+    // שלד עם אותו מזהה ו-updated ריק — המשיכה מהענן (שרצה מיד) תמיד תנצח ותחזיר את התוכן
+    docRec = { id: docId, type: "canvas", name: defaultName(), content: "", data: null, folderId: null, links: [], created: nowIso(), updated: "" };
+    window.dovStore.putDoc(docRec);
+  }
   if (!docRec) {
     docRec = createDoc("canvas", null);
     docId = docRec.id;
@@ -312,7 +323,10 @@
   }
 
   document.getElementById("copyUrlBtn").addEventListener("click", function () {
-    copyText(location.origin + location.pathname + "?id=" + encodeURIComponent(docId), "קישור הקובץ הועתק ✓");
+    var url = location.origin + location.pathname + "?id=" + encodeURIComponent(docId);
+    // מצרפים את מזהה המרחב — כך ההטמעה תתחבר לענן גם אם האחסון המקומי נוקה
+    try { if (window.dovCloud && dovCloud.spaceId()) url += "&space=" + encodeURIComponent(dovCloud.spaceId()); } catch (e) {}
+    copyText(url, "קישור הקובץ הועתק ✓");
   });
 
   // ===== פתק צהוב =====

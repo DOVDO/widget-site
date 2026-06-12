@@ -184,8 +184,19 @@
 
   // ----- טעינת המסמך -----
   const params = new URLSearchParams(location.search);
+  // אם הקישור כולל מזהה מרחב (space) — מתחברים אליו אוטומטית גם אם האחסון המקומי נוקה
+  try {
+    const spParam = params.get("space");
+    if (spParam && window.dovCloud && !dovCloud.spaceId()) dovCloud.setSpaceId(spParam);
+  } catch (e) {}
   let docId = params.get("id");
   let doc = docId ? getDoc(docId) : null;
+  if (!doc && docId && window.dovCloud && dovCloud.spaceId()) {
+    // הקובץ לא נמצא מקומית (הדפדפן ניקה את האחסון?) — לא יוצרים קובץ חדש וריק!
+    // שלד עם אותו מזהה ו-updated ריק — המשיכה מהענן (שרצה מיד) תמיד תנצח ותחזיר את התוכן
+    doc = { id: docId, type: "sheet", name: defaultName(), content: "", data: null, folderId: null, links: [], created: nowIso(), updated: "" };
+    window.dovStore.putDoc(doc);
+  }
   if (!doc) {
     doc = createDoc("sheet", null);
     docId = doc.id;
@@ -506,7 +517,13 @@
     });
   }
   function copyCurrentUrl() {
-    const url = location.href;
+    let url = location.href;
+    // מצרפים את מזהה המרחב — כך ההטמעה תתחבר לענן גם אם האחסון המקומי נוקה
+    try {
+      if (window.dovCloud && dovCloud.spaceId() && url.indexOf("space=") < 0) {
+        url += (url.indexOf("?") >= 0 ? "&" : "?") + "space=" + encodeURIComponent(dovCloud.spaceId());
+      }
+    } catch (e) {}
     try {
       const ta = document.createElement("textarea");
       ta.value = url;
@@ -819,6 +836,14 @@
     });
   }
 
+  // רענון מהענן: דוחפים שינויים מקומיים וטוענים מחדש את הגרסה העדכנית מהענן
+  function refreshFromCloud() {
+    try { if (window.dovCloud && dovCloud.flush) dovCloud.flush(); } catch (e) {}
+    try { sessionStorage.removeItem("dov-cloud-reload-" + docId); } catch (e) {}
+    try { saveStatus.textContent = "מרענן מהענן… ⏳"; } catch (e) {}
+    setTimeout(() => location.reload(), 700);
+  }
+
   function injectExtraMenu() {
     const menu = document.getElementById("luckysheet-rightclick-menu");
     if (!menu || document.getElementById("dovExtraMenu")) return;
@@ -848,6 +873,7 @@
       ["\ud83d\udd3d סינון: הפעל על הטווח", function () { doFilter(true); }],
       ["\ud83d\udd3c סינון: בטל", function () { doFilter(false); }],
       ["\ud83d\udccb העתק את כתובת הדף הנוכחי", copyCurrentUrl],
+      ["\ud83d\udd04 רענון מהענן", refreshFromCloud],
       ["\ud83d\udd0d זום...", () => {
         const answer = prompt("אחוז תצוגה (25-400):", zoomPct.value);
         if (answer === null) return;

@@ -232,8 +232,19 @@
 
   // ===== טעינת המסמך =====
   const params = new URLSearchParams(location.search);
+  // אם הקישור כולל מזהה מרחב (space) — מתחברים אליו אוטומטית גם אם האחסון המקומי נוקה
+  try {
+    const spParam = params.get("space");
+    if (spParam && window.dovCloud && !dovCloud.spaceId()) dovCloud.setSpaceId(spParam);
+  } catch (e) {}
   let docId = params.get("id");
   let doc = docId ? getDoc(docId) : null;
+  if (!doc && docId && window.dovCloud && dovCloud.spaceId()) {
+    // הקובץ לא נמצא מקומית (הדפדפן ניקה את האחסון?) — לא יוצרים קובץ חדש וריק!
+    // שלד עם אותו מזהה ו-updated ריק — המשיכה מהענן (שרצה מיד) תמיד תנצח ותחזיר את התוכן
+    doc = { id: docId, type: "markdown", name: defaultName(), content: "", data: null, folderId: null, links: [], created: nowIso(), updated: "" };
+    window.dovStore.putDoc(doc);
+  }
   if (!doc) {
     doc = createDoc();
     docId = doc.id;
@@ -773,7 +784,117 @@
     });
   }
 
-  function shotFull() {
+  // האלמנט שגולל בפועל את תוכן המסמך (תלוי במצב צפייה/עריכה)
+  function getScroller() {
+    let root = currentMode === "view" ? viewerRootEl : document.getElementById("editorRoot");
+    if (!root) root = document.body;
+    if (root.scrollHeight > root.clientHeight + 2) return root;
+    const all = root.querySelectorAll("*");
+    for (let i = 0; i < all.length; i++) {
+      const el = all[i];
+      if (el.scrollHeight > el.clientHeight + 2) {
+        const cs = getComputedStyle(el);
+        if (cs.overflowY === "auto" || cs.overflowY === "scroll") return el;
+      }
+    }
+    return root;
+  }
+
+  // צילום "בתפירה": גוללים אוטומטית, מצלמים פרוסות מסך (הדרך שמוכחת כעובדת בהטמעה)
+  // ותופרים אותן לתמונה אחת — בלי תלות בגובה המסמך
+  async function stitchCapture(scroller, fromY, toY) {
+    await ensureH2C();
+    const rect = scroller.getBoundingClientRect();
+    const viewH = scroller.clientHeight;
+    const totalH = Math.max(10, toY - fromY);
+    // ככל שהקטע ארוך יותר — מורידים מעט רזולוציה כדי שהתמונה לא תיכשל
+    const scale = Math.max(1, Math.min(2.5, Math.sqrt(28000000 / (rect.width * totalH))));
+    const out = document.createElement("canvas");
+    out.width = Math.round(rect.width * scale);
+    out.height = Math.round(totalH * scale);
+    const g = out.getContext("2d");
+    g.fillStyle = "#ffffff";
+    g.fillRect(0, 0, out.width, out.height);
+    const prevTop = scroller.scrollTop;
+    const hideIds = ["dovDot", "showBtn", "blockHandle", "dovToast", "dovBubble", "dovCtx", "dovRangeLine"];
+    let done = 0;
+    while (done < totalH) {
+      const sliceH = Math.min(viewH, totalH - done);
+      scroller.scrollTop = fromY + done;
+      await new Promise((r) => setTimeout(r, 140)); // נותנים לדפדפן לצייר את הפריים
+      const offsetInView = (fromY + done) - scroller.scrollTop;
+      const cv = await window.html2canvas(document.body, {
+        backgroundColor: "#ffffff",
+        scale: scale,
+        x: rect.left,
+        y: rect.top + offsetInView,
+        width: rect.width,
+        height: sliceH,
+        onclone: (cd) => hideIds.forEach((id) => { const n = cd.getElementById(id); if (n) n.remove(); }),
+      });
+      g.drawImage(cv, 0, Math.round(done * scale), out.width, Math.round(sliceH * scale));
+      done += sliceH;
+    }
+    scroller.scrollTop = prevTop;
+    return out;
+  }
+
+  function runStitch(scroller, fromY, toY) {
+    dovToast("📷 מצלם… המסמך נגלל אוטומטית — רגע אחד ⏳");
+    stitchCapture(scroller, fromY, toY)
+      .then((cv) => showShotModal(cv))
+      .catch(() => dovToast("⚠️ הצילום נכשל — נסה שוב או צלם קטע קטן יותר"));
+  }
+
+  // ===== צילום מנקודה לנקודה: לחיצה על שורת התחלה, גלילה, לחיצה על שורת סיום =====
+  let rangePick = null;
+  function startRangeShot() {
+    const sc = getScroller();
+    if (!sc) { dovToast("אין מה לצלם"); return; }
+    rangePick = { scroller: sc, firstY: null };
+    dovToast("🎯 לחץ על השורה הראשונה לצילום (Esc לביטול)");
+  }
+  function rangeLine(rect, clientY) {
+    let ln = document.getElementById("dovRangeLine");
+    if (!ln) {
+      ln = document.createElement("div");
+      ln.id = "dovRangeLine";
+      ln.style.cssText = "position:fixed;height:2px;background:#0b6e99;z-index:8900;pointer-events:none;box-shadow:0 0 5px rgba(11,110,153,.7);";
+      document.body.appendChild(ln);
+    }
+    ln.style.left = rect.left + "px";
+    ln.style.width = rect.width + "px";
+    ln.style.top = clientY + "px";
+    ln.style.display = "block";
+  }
+  function clearRangeLine() {
+    const ln = document.getElementById("dovRangeLine");
+    if (ln) ln.style.display = "none";
+  }
+  document.addEventListener("click", (e) => {
+    if (!rangePick) return;
+    const sc = rangePick.scroller;
+    const rect = sc.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+    const y = sc.scrollTop + (e.clientY - rect.top);
+    if (rangePick.firstY === null) {
+      rangePick.firstY = y;
+      rangeLine(rect, e.clientY);
+      dovToast("🎯 עכשיו גלול ולחץ על השורה האחרונה");
+    } else {
+      const from = Math.max(0, Math.min(rangePick.firstY, y) - 10);
+      const to = Math.min(sc.scrollHeight, Math.max(rangePick.firstY, y) + 26);
+      rangePick = null;
+      clearRangeLine();
+      runStitch(sc, from, to);
+    }
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && rangePick) { rangePick = null; clearRangeLine(); dovToast("הצילום בוטל"); }
+  }, true);
+  document.addEventListener("scroll", () => { if (rangePick) clearRangeLine(); }, true);
+
+  function shotFullOld() {
     const target = currentMode === "view" ? viewerRootEl : (getProseMirror() || document.body);
     dovToast("מצלם את כל המסמך… ⏳");
     // יוצרים עותק של התוכן בגובה מלא (בלי גלילה) מאחורי מסך לבן זמני,
@@ -1029,6 +1150,62 @@
     dovCtx.appendChild(s);
   }
 
+  // תת-תפריט נפתח/נסגר בתוך התפריט (כמו בגיליון)
+  function ctxGroup(label, items) {
+    const head = document.createElement("button");
+    head.textContent = label + " ◂";
+    head.addEventListener("mousedown", (ev) => ev.preventDefault()); // שומר על הסימון בעורך
+    const grp = document.createElement("div");
+    grp.style.cssText = "display:none;flex-direction:column;flex-shrink:0;background:#fbfbfa;border-radius:6px;";
+    items.forEach(([txt, fn]) => {
+      const b = document.createElement("button");
+      b.textContent = txt;
+      b.style.paddingInlineStart = "26px";
+      b.style.flexShrink = "0";
+      b.addEventListener("mousedown", (ev) => ev.preventDefault()); // לא מאבדים את הסימון
+      b.addEventListener("click", () => { hideCtx(); fn(); });
+      grp.appendChild(b);
+    });
+    head.addEventListener("click", () => {
+      const open = grp.style.display !== "none";
+      grp.style.display = open ? "none" : "flex";
+      head.textContent = label + (open ? " ◂" : " ▾");
+    });
+    dovCtx.appendChild(head);
+    dovCtx.appendChild(grp);
+  }
+
+  // הרצת פקודת עיצוב/הוספה של העורך (מה שהיה בסרגל העליון)
+  function fmtExec(cmd, payload) {
+    if (currentMode !== "edit") { setMode("edit"); }
+    try { editor.exec(cmd, payload); editor.focus(); } catch (e) { dovToast("⚠️ הפקודה לא נתמכה"); }
+  }
+
+  function refreshFromCloud() {
+    dovToast("🔄 מרענן מהענן… ⏳");
+    try { if (window.dovCloud && dovCloud.flush) dovCloud.flush(); } catch (e) {}
+    try { sessionStorage.removeItem("dov-cloud-reload-" + docId); } catch (e) {}
+    setTimeout(() => location.reload(), 700);
+  }
+
+  function copyDocUrl() {
+    let url = location.origin + location.pathname + "?id=" + encodeURIComponent(docId);
+    // מצרפים את מזהה המרחב — כך ההטמעה תתחבר לענן גם אם האחסון המקומי נוקה
+    try { if (window.dovCloud && dovCloud.spaceId()) url += "&space=" + encodeURIComponent(dovCloud.spaceId()); } catch (e) {}
+    let ok = false;
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) {}
+    dovToast(ok ? "קישור הקובץ הועתק ✓" : "⚠️ ההעתקה נחסמה — העתק מהסייר בדף הבית");
+  }
+
   function buildCtx() {
     dovCtx.innerHTML = "";
     const mark = (m) => (currentMode === m ? "✓ " : "");
@@ -1041,11 +1218,31 @@
     ctxBtn(topHidden ? "🧰 הצגת סרגל העיצוב העליון" : "🧰 הסתרת סרגל העיצוב העליון", () => setTopHidden(!topHidden));
     ctxBtn(botHidden ? "🎛️ הצגת הסרגל התחתון" : "🎛️ הסתרת הסרגל התחתון", () => setToolbarHidden(!botHidden));
     ctxSep();
+    ctxGroup("🅰 עיצוב והוספה (הסרגל העליון)", [
+      ["𝐁 מודגש", () => fmtExec("bold")],
+      ["𝐼 נטוי", () => fmtExec("italic")],
+      ["S̶ קו חוצה", () => fmtExec("strike")],
+      ["</> קוד בתוך שורה", () => fmtExec("code")],
+      ["H1 כותרת גדולה", () => fmtExec("heading", { level: 1 })],
+      ["H2 כותרת בינונית", () => fmtExec("heading", { level: 2 })],
+      ["H3 כותרת קטנה", () => fmtExec("heading", { level: 3 })],
+      ["• רשימת תבליטים", () => fmtExec("bulletList")],
+      ["1. רשימה ממוספרת", () => fmtExec("orderedList")],
+      ["☑ רשימת משימות", () => fmtExec("taskList")],
+      ["❝ ציטוט", () => fmtExec("blockQuote")],
+      ["▦ טבלה 3×3", () => fmtExec("addTable", { rowCount: 3, columnCount: 3 })],
+      ["─ קו מפריד", () => fmtExec("hr")],
+      ["{ } בלוק קוד", () => fmtExec("codeBlock")],
+    ]);
+    ctxSep();
     ctxBtn("📋 העתקת כל המסמך (עם העיצוב)", copyDocRich);
     ctxBtn("📷 צילום כל המסמך", shotFull);
+    ctxBtn("🎯 צילום מנקודה לנקודה", startRangeShot);
     ctxBtn("📌 צילום אזור בין 2 נעצים", startPins);
     ctxBtn("⬇️ הורדת קובץ .md", () => document.getElementById("downloadBtn").click());
     ctxSep();
+    ctxBtn("🔄 רענון מהענן", refreshFromCloud);
+    ctxBtn("📋 העתקת קישור הקובץ (להטמעה)", copyDocUrl);
     ctxBtn("🔗 היכן המסמך משובץ בנושן", () => openLinksModal(docId));
     ctxBtn("🏠 כל המסמכים", () => { location.href = "index.html"; });
   }
@@ -1074,7 +1271,12 @@
   });
 
   document.addEventListener("mousedown", (e) => { if (!dovCtx.contains(e.target)) hideCtx(); });
-  document.addEventListener("scroll", hideCtx, true);
+  document.addEventListener("scroll", (e) => {
+    // גלילה בתוך התפריט עצמו לא סוגרת אותו — רק גלילת המסמך
+    const t = e.target;
+    if (t && t.nodeType === 1 && t.closest && t.closest("#dovCtx")) return;
+    hideCtx();
+  }, true);
 
   // ===== סנכרון ענן של הקובץ הנוכחי =====
   (function () {

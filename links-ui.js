@@ -20,6 +20,10 @@ function openLinksModal(docId, onClose) {
       ".lb-rbtns button { border: 1px solid #d3d3d0; background: #fff; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; cursor: pointer; font-family: inherit; }",
       ".lb-rbtns button:hover { background: #f1f1ef; }",
       ".lb-rbtns .lb-del { color: #c4554d; }",
+      ".lb-sec { font-size: 12px; font-weight: 700; color: #787774; margin: 6px 0 4px; }",
+      ".lb-kinds { display: flex; gap: 6px; }",
+      ".lb-kinds button { flex: 1; border: 1px solid #d3d3d0; background: #fff; border-radius: 6px; padding: 5px; font-size: 12.5px; cursor: pointer; font-family: inherit; }",
+      ".lb-kinds button.on { background: #2383e2; border-color: #2383e2; color: #fff; }",
       ".lb-form { padding: 10px 16px; border-top: 1px solid #e9e9e7; display: flex; flex-direction: column; gap: 6px; }",
       ".lb-form input { border: 1px solid #d3d3d0; border-radius: 6px; padding: 6px 8px; font-size: 13px; font-family: inherit; }",
       ".lb-form input:focus { outline: none; border-color: #2383e2; }",
@@ -56,21 +60,47 @@ function openLinksModal(docId, onClose) {
 
   const form = document.createElement("div");
   form.className = "lb-form";
+  // סוג הקישור: בלוק (היכן הקובץ משובץ) או דף (לאיזה דף נושן הוא שייך)
+  let kind = "block";
+  let kindManual = false;
+  const kindsRow = document.createElement("div");
+  kindsRow.className = "lb-kinds";
+  const kindBlockBtn = document.createElement("button");
+  kindBlockBtn.textContent = "\ud83e\uddf1 קישור בלוק";
+  const kindPageBtn = document.createElement("button");
+  kindPageBtn.textContent = "\ud83d\udcc4 קישור דף";
+  function setKind(k, manual) {
+    kind = k;
+    if (manual) kindManual = true;
+    kindBlockBtn.className = k === "block" ? "on" : "";
+    kindPageBtn.className = k === "page" ? "on" : "";
+  }
+  kindBlockBtn.addEventListener("click", () => setKind("block", true));
+  kindPageBtn.addEventListener("click", () => setKind("page", true));
+  kindsRow.appendChild(kindBlockBtn);
+  kindsRow.appendChild(kindPageBtn);
+  setKind("block", false);
   const urlInput = document.createElement("input");
   urlInput.className = "lb-url";
-  urlInput.placeholder = "הדבק קישור לבלוק / לעמוד בנושן";
+  urlInput.placeholder = "הדבק קישור לבלוק / לדף בנושן";
+  urlInput.addEventListener("input", () => {
+    if (kindManual) return;
+    // זיהוי אוטומטי: קישור לבלוק בנושן מכיל # עם מזהה הבלוק
+    setKind(urlInput.value.indexOf("#") >= 0 ? "block" : "page", false);
+  });
   const noteInput = document.createElement("input");
   noteInput.placeholder = "הערה — למשל: עמוד יומן הלמידה";
   const addBtn = document.createElement("button");
   addBtn.className = "lb-add";
   addBtn.textContent = "➕ הוסף קישור";
+  form.appendChild(kindsRow);
   form.appendChild(urlInput);
   form.appendChild(noteInput);
   form.appendChild(addBtn);
 
   const tip = document.createElement("div");
   tip.className = "lb-tip";
-  tip.textContent = "טיפ: בנושן לחץ על ⋯ של הבלוק ובחר Copy link to block — והדבק כאן";
+  tip.textContent = "טיפ: לבלוק — ⋯ ← Copy link to block. לדף — ⋯ ← Copy link. הסוג מזוהה אוטומטית וניתן לשנות ידנית";
 
   box.appendChild(head);
   box.appendChild(list);
@@ -90,7 +120,19 @@ function openLinksModal(docId, onClose) {
       list.appendChild(empty);
       return;
     }
-    links.forEach((l) => {
+    const kindOf = (l) => l.kind || ((l.url || "").indexOf("#") >= 0 ? "block" : "page");
+    [
+      ["\ud83e\uddf1 קישורי בלוקים — היכן הקובץ משובץ", links.filter((l) => kindOf(l) === "block")],
+      ["\ud83d\udcc4 קישורי דפים — לאילו דפים הקובץ שייך", links.filter((l) => kindOf(l) === "page")],
+    ].forEach(([secTitle, secLinks]) => {
+      if (!secLinks.length) return;
+      const sec = document.createElement("div");
+      sec.className = "lb-sec";
+      sec.textContent = secTitle;
+      list.appendChild(sec);
+      secLinks.forEach(renderRow);
+    });
+    function renderRow(l) {
       const row = document.createElement("div");
       row.className = "lb-row";
       const note = document.createElement("div");
@@ -123,13 +165,14 @@ function openLinksModal(docId, onClose) {
       row.appendChild(url);
       row.appendChild(btns);
       list.appendChild(row);
-    });
+    }
   }
 
   addBtn.addEventListener("click", () => {
     const url = urlInput.value.trim();
     if (!url) { urlInput.focus(); return; }
-    addLink(docId, url, noteInput.value.trim());
+    addLink(docId, url, noteInput.value.trim(), kind);
+    kindManual = false;
     urlInput.value = "";
     noteInput.value = "";
     render();

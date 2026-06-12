@@ -161,12 +161,13 @@ function deleteFolder(id) {
 }
 
 // ----- קישורי נושן: היכן כל קובץ משובץ בנושן -----
-function addLink(docId, url, note) {
+// kind: "block" (היכן הקובץ משובץ כבלוק) או "page" (לאיזה דף נושן הקובץ שייך)
+function addLink(docId, url, note, kind) {
   const store = loadStore();
   const doc = store.docs.find((d) => d.id === docId);
   if (!doc) return null;
   if (!doc.links) doc.links = [];
-  const link = { id: uid(), url: url, note: note || "", created: nowIso() };
+  const link = { id: uid(), url: url, note: note || "", kind: kind === "page" ? "page" : "block", created: nowIso() };
   doc.links.push(link);
   doc.updated = nowIso();
   saveStore(store);

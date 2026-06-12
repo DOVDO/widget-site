@@ -189,4 +189,10 @@
     isReady: ready,
   };
   window.dovStorageChanged = queuePush;
+
+  // דחיפה מיידית כשהווידג'ט מוסתר/נסגר — נושן סוגר iframes בלי אזהרה,
+  // וההמתנה של 1.2 שניות עלולה לאבד את השינוי האחרון
+  function hardFlush() { clearTimeout(pushTimer); flush(); }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") hardFlush(); });
+  window.addEventListener("pagehide", hardFlush);
 })();
