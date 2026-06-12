@@ -146,7 +146,7 @@
     <main id="list"></main>
   </div>
 
-  <footer>גרסה 0.22</footer>
+  <footer>גרסה 0.23</footer>
 
   <div id="moveOverlay">
     <div id="moveBox">
@@ -548,7 +548,7 @@
   // ----- יצירת קבצים: דוחפים לענן לפני המעבר לדף העריכה -----
   function createAndOpen(type) {
     const d = createDoc(type, currentFolderId);
-    const go = () => { location.href = (type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id); };
+    const go = () => openDocPage(d); // ניתוב מרכזי אחד — מכיר גם את הקנבס
     if (window.dovCloud && dovCloud.isReady()) {
       Promise.race([dovCloud.flush(), new Promise((r) => setTimeout(r, 1500))]).then(go, go);
     } else {
