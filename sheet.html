@@ -376,6 +376,41 @@
         ["זליגה לתא הסמוך", () => setFmt("tb", 1), () => dovCellAttr("tb") == 1],
         ["חיתוך", () => setFmt("tb", 0), () => dovCellAttr("tb") == 0],
       ]);
+      dovBtnGroup("גבולות התא", [
+        ["כל הגבולות", () => setBorder("border-all")],
+        ["מסגרת חיצונית", () => setBorder("border-outside")],
+        ["פנימיים", () => setBorder("border-inside")],
+        ["תחתון", () => setBorder("border-bottom")],
+        ["עליון", () => setBorder("border-top")],
+        ["ימני", () => setBorder("border-right")],
+        ["שמאלי", () => setBorder("border-left")],
+        ["ללא גבולות", () => setBorder("border-none")],
+      ]);
+
+      const labC = document.createElement("div");
+      labC.className = "dovLabel";
+      labC.textContent = "צבע מותאם אישית";
+      body.appendChild(labC);
+      const rowC = document.createElement("div");
+      rowC.className = "dovBtnRow";
+      const pick = document.createElement("input");
+      pick.type = "color";
+      pick.value = "#ffe066";
+      rowC.appendChild(pick);
+      const applyBg = document.createElement("button");
+      applyBg.textContent = "החל כרקע";
+      applyBg.addEventListener("click", () => { setFmt("bg", pick.value); setTimeout(refreshAll, 120); });
+      rowC.appendChild(applyBg);
+      const applyFc = document.createElement("button");
+      applyFc.textContent = "החל כצבע טקסט";
+      applyFc.addEventListener("click", () => { setFmt("fc", pick.value); setTimeout(refreshAll, 120); });
+      rowC.appendChild(applyFc);
+      const condBtn = document.createElement("button");
+      condBtn.textContent = "\ud83d\udea6 עיצוב לפי תנאים...";
+      condBtn.addEventListener("click", openCondFormat);
+      rowC.appendChild(condBtn);
+      body.appendChild(rowC);
+
       dovBtnGroup("מיזוג תאים", [
         ["מזג את הטווח", () => { try { luckysheet.setRangeMerge("all"); scheduleSave(); } catch (e) { alert("סמן קודם טווח של כמה תאים"); } }],
         ["בטל מיזוג", () => { try { luckysheet.cancelRangeMerge(); scheduleSave(); } catch (e) {} }],
@@ -471,6 +506,155 @@
     scheduleSave();
   }
 
+  // ----- כלים נוספים מהתפריט העליון -----
+  function doScreenshot() {
+    let data = null;
+    try { data = luckysheet.getScreenshot(); } catch (e) {}
+    if (!data) { alert("סמן קודם טווח תאים ונסה שוב"); return; }
+    dovModal("\ud83d\udcf7 צילום הטווח המסומן", (body) => {
+      const img = document.createElement("img");
+      img.src = data;
+      img.style.maxWidth = "100%";
+      img.style.border = "1px solid #e1e1e1";
+      img.style.borderRadius = "4px";
+      body.appendChild(img);
+      const a = document.createElement("a");
+      a.href = data;
+      a.download = "sheet-" + Date.now() + ".png";
+      a.textContent = "\u2b07\ufe0f הורדת התמונה כקובץ PNG";
+      a.style.display = "inline-block";
+      a.style.marginTop = "10px";
+      body.appendChild(a);
+      const tip = document.createElement("div");
+      tip.className = "dovLabel";
+      tip.textContent = "אפשר גם לגרור את התמונה ישירות לדף נושן.";
+      body.appendChild(tip);
+    });
+  }
+  function doInsertImage() {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "image/*";
+    inp.addEventListener("change", () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      const rd = new FileReader();
+      rd.onload = () => {
+        try { luckysheet.insertImage(rd.result); scheduleSave(); } catch (e) { alert("הוספת תמונה אינה נתמכת בגרסת מנוע זו");}
+      };
+      rd.readAsDataURL(f);
+    });
+    inp.click();
+  }
+  function openFreezeModal() {
+    dovModal("\u2744\ufe0f הקפאת שורות ועמודות", (body) => {
+      const defs = [
+        ["הקפא שורה ראשונה", () => luckysheet.setHorizontalFrozen(false)],
+        ["הקפא עמודה ראשונה", () => luckysheet.setVerticalFrozen(false)],
+        ["הקפא שורה + עמודה", () => luckysheet.setBothFrozen(false)],
+        ["הקפא עד התא המסומן", () => {
+          const g = luckysheet.getRange()[0];
+          luckysheet.setBothFrozen(true, { range: { row_focus: g.row[0], column_focus: g.column[0] } });
+        }],
+        ["בטל הקפאה", () => luckysheet.cancelFrozen()],
+      ];
+      defs.forEach((d) => {
+        const b = document.createElement("div");
+        b.className = "dovListItem";
+        b.textContent = d[0];
+        b.addEventListener("click", () => { try { d[1](); scheduleSave(); } catch (e) { alert("הפעולה לא הצליחה"); } });
+        body.appendChild(b);
+      });
+    });
+  }
+  function doFilter(open) {
+    try { luckysheet.setRangeFilter(open ? "open" : "close"); scheduleSave(); }
+    catch (e) { alert("סמן קודם את שורת הכותרות עם הנתונים ונסה שוב"); }
+  }
+  function setBorder(type) {
+    try {
+      if (typeof luckysheet.setRangeBoder === "function") { luckysheet.setRangeBoder(type, { color: "#37352f", style: "1" }); scheduleSave(); return; }
+    } catch (e) {}
+    try {
+      if (typeof luckysheet.setRangeBorder === "function") { luckysheet.setRangeBorder(type, { color: "#37352f", style: "1" }); scheduleSave(); return; }
+    } catch (e) {}
+    alert("גבולות לא נתמכים ישירות כאן — פתח את התפריטים המלאים (הכלים שלי ← הצג תפריטים)");
+  }
+  function openCondFormat() {
+    dovModal("\ud83d\udea6 עיצוב לפי תנאים — על הטווח המסומן", (body) => {
+      const lab1 = document.createElement("div");
+      lab1.className = "dovLabel";
+      lab1.textContent = "כשהערך בתא...";
+      body.appendChild(lab1);
+      const sel = document.createElement("select");
+      [["greaterThan", "גדול מ..."], ["lessThan", "קטן מ..."], ["equal", "שווה ל..."], ["betweenness", "בין... לבין..."], ["textContains", "מכיל את הטקסט..."], ["duplicateValue", "ערך כפול"]].forEach((o) => {
+        const op = document.createElement("option");
+        op.value = o[0];
+        op.textContent = o[1];
+        sel.appendChild(op);
+      });
+      body.appendChild(sel);
+      const row = document.createElement("div");
+      row.className = "dovBtnRow";
+      const v1 = document.createElement("input");
+      v1.placeholder = "ערך";
+      v1.style.cssText = "padding:4px 6px;border:1px solid #d3d1cb;border-radius:5px;width:120px";
+      const v2 = document.createElement("input");
+      v2.placeholder = "ערך שני (ל'בין')";
+      v2.style.cssText = v1.style.cssText;
+      row.appendChild(v1);
+      row.appendChild(v2);
+      body.appendChild(row);
+      const lab2 = document.createElement("div");
+      lab2.className = "dovLabel";
+      lab2.textContent = "כשהתנאי מתקיים — צבע רקע וצבע טקסט:";
+      body.appendChild(lab2);
+      const row2 = document.createElement("div");
+      row2.className = "dovBtnRow";
+      const cc = document.createElement("input");
+      cc.type = "color";
+      cc.value = "#fbe4e4";
+      cc.title = "צבע רקע";
+      const tc = document.createElement("input");
+      tc.type = "color";
+      tc.value = "#e03e3e";
+      tc.title = "צבע טקסט";
+      row2.appendChild(cc);
+      row2.appendChild(tc);
+      body.appendChild(row2);
+      const row3 = document.createElement("div");
+      row3.className = "dovBtnRow";
+      const go = document.createElement("button");
+      go.textContent = "\u2705 החל על הטווח המסומן";
+      go.addEventListener("click", () => {
+        const name = sel.value;
+        const n1 = parseFloat(v1.value);
+        let vals;
+        if (name === "betweenness") vals = [v1.value, v2.value];
+        else if (name === "duplicateValue") vals = [0];
+        else if (name === "textContains") vals = [v1.value];
+        else vals = [isNaN(n1) ? v1.value : n1];
+        try {
+          luckysheet.setRangeConditionalFormatDefault(name, vals, { format: { textColor: tc.value, cellColor: cc.value } });
+          scheduleSave();
+          saveStatus.textContent = "התנאי הוחל \u2713";
+        } catch (e) { alert("לא הצלחתי להחיל — ודא שסימנת טווח ושהערך מתאים לתנאי");}
+      });
+      const clr = document.createElement("button");
+      clr.textContent = "\ud83d\uddd1\ufe0f מחק את כל התנאים בגיליון";
+      clr.addEventListener("click", () => {
+        for (let i = 0; i < 50; i++) {
+          try { luckysheet.deleteRangeConditionalFormat(0); } catch (e) { break; }
+        }
+        scheduleSave();
+        saveStatus.textContent = "התנאים נמחקו";
+      });
+      row3.appendChild(go);
+      row3.appendChild(clr);
+      body.appendChild(row3);
+    });
+  }
+
   function injectExtraMenu() {
     const menu = document.getElementById("luckysheet-rightclick-menu");
     if (!menu || document.getElementById("dovExtraMenu")) return;
@@ -493,6 +677,12 @@
       ["\u21a9 בטל פעולה (Undo)", doUndo],
       ["\u21aa בצע שוב (Redo)", doRedo],
       ["\ud83c\udfa8 עיצוב מהיר (צבעים, יישור, מיזוג)", openQuickFormat],
+      ["\ud83d\udea6 עיצוב לפי תנאים", openCondFormat],
+      ["\ud83d\udcf7 צילום הטווח המסומן", doScreenshot],
+      ["\ud83d\uddbc\ufe0f הוספת תמונה מהמחשב", doInsertImage],
+      ["\u2744\ufe0f הקפאת שורות/עמודות", openFreezeModal],
+      ["\ud83d\udd3d סינון: הפעל על הטווח", function () { doFilter(true); }],
+      ["\ud83d\udd3c סינון: בטל", function () { doFilter(false); }],
       ["\ud83d\udccb העתק את כתובת הדף הנוכחי", copyCurrentUrl],
       ["\ud83d\udd0d זום...", () => {
         const answer = prompt("אחוז תצוגה (25-400):", zoomPct.value);
@@ -581,12 +771,14 @@
       if (cs.position !== "absolute" && cs.position !== "fixed") return;
       let r = el.getBoundingClientRect();
       if (r.width < 60 || r.height < 40) return;
-      if (r.height > vh - 8 || r.bottom > vh - 4) {
-        el.style.maxHeight = (vh - 8) + "px";
+      const mh = (vh - 8) + "px";
+      if (r.height > vh - 8 && el.style.maxHeight !== mh) {
+        el.style.maxHeight = mh;
         el.style.overflowY = "auto";
       }
-      if (r.width > vw - 8 || r.right > vw - 4) {
-        el.style.maxWidth = (vw - 8) + "px";
+      const mw = (vw - 8) + "px";
+      if (r.width > vw - 8 && el.style.maxWidth !== mw) {
+        el.style.maxWidth = mw;
         el.style.overflowX = "auto";
       }
       r = el.getBoundingClientRect();
@@ -596,8 +788,9 @@
       if (r.top + dy < 4) dy = 4 - r.top;
       if (r.right > vw - 4) dx = (vw - 4) - r.right;
       if (r.left + dx < 4) dx = 4 - r.left;
-      if (dy) el.style.top = (el.offsetTop + dy) + "px";
-      if (dx) el.style.left = (el.offsetLeft + dx) + "px";
+      // סטייה של עד 2 פיקסלים לא מוזזת — מונע רעד בגבול
+      if (Math.abs(dy) > 2) el.style.top = Math.round(el.offsetTop + dy) + "px";
+      if (Math.abs(dx) > 2) el.style.left = Math.round(el.offsetLeft + dx) + "px";
     });
   }
   function dovQueueClamp() {
