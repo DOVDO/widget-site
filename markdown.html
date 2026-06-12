@@ -894,6 +894,13 @@
   }, true);
   document.addEventListener("scroll", () => { if (rangePick) clearRangeLine(); }, true);
 
+  // צילום כל המסמך — משתמש בשיטת התפירה החדשה מההתחלה עד הסוף
+  function shotFull() {
+    const sc = getScroller();
+    if (!sc) { dovToast("אין מה לצלם"); return; }
+    runStitch(sc, 0, sc.scrollHeight);
+  }
+
   function shotFullOld() {
     const target = currentMode === "view" ? viewerRootEl : (getProseMirror() || document.body);
     dovToast("מצלם את כל המסמך… ⏳");
@@ -1203,7 +1210,7 @@
       ok = document.execCommand("copy");
       document.body.removeChild(ta);
     } catch (e) {}
-    dovToast(ok ? "קישור הקובץ הועתק ✓" : "⚠️ ההעתקה נחסמה — העתק מהסייר בדף הבית");
+    dovToast(ok ? "קישור הקובץ הועתק ✓" : "⚠️ ההעתקה נחסמה — העתק מהסייר בדף הב��ת");
   }
 
   function buildCtx() {
