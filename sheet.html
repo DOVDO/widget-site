@@ -125,7 +125,7 @@
   #dovExtraMenu .dov-arrow { float: left; color: #9b9a97; font-size: 11px; }
 
   .dovSwatch.sel { outline: 2px solid #2383e2; outline-offset: 1px; }
-  .luckysheet-scrollbar-x, .luckysheet-scrollbar-y { overscroll-behavior: none; }
+  #luckysheet-scrollbar-x, #luckysheet-scrollbar-y, .luckysheet-scrollbar-x, .luckysheet-scrollbar-y { overscroll-behavior: none; }
 </style>
 </head>
 <body>
@@ -566,10 +566,31 @@
 
   // ----- גלילה, מגע וזום בצביטה -----
   function dovBars() {
-    return {
-      sy: document.querySelector(".luckysheet-scrollbar-y"),
-      sx: document.querySelector(".luckysheet-scrollbar-x"),
-    };
+    const sy = document.getElementById("luckysheet-scrollbar-y") || document.querySelector(".luckysheet-scrollbar-y");
+    const sx = document.getElementById("luckysheet-scrollbar-x") || document.querySelector(".luckysheet-scrollbar-x");
+    return { sy: sy, sx: sx };
+  }
+  function dovGetScrollTop() {
+    const b = dovBars();
+    if (b.sy) return b.sy.scrollTop;
+    try {
+      const s = luckysheet.getSheet();
+      if (s && typeof s.scrollTop === "number") return s.scrollTop;
+    } catch (e) {}
+    return 0;
+  }
+  function dovScrollTo(y) {
+    y = Math.max(0, y);
+    const b = dovBars();
+    if (b.sy && b.sy.clientHeight > 0) { b.sy.scrollTop = y; return; }
+    try { luckysheet.scroll({ scrollTop: y }); } catch (e) {}
+  }
+  function dovScrollBy(dy, dx) {
+    if (dy) dovScrollTo(dovGetScrollTop() + dy);
+    if (dx) {
+      const b = dovBars();
+      if (b.sx) b.sx.scrollLeft = Math.max(0, b.sx.scrollLeft + dx);
+    }
   }
 
   // בליעת גלילה שלא תזלוג לנושן + זום בצביטה בטאצ'-פד (Ctrl+גלגלת)
@@ -584,8 +605,17 @@
       }
       return;
     }
-    if (e.target && e.target.closest && e.target.closest(".luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
+    if (e.target && e.target.closest && e.target.closest("#luckysheet-scrollbar-x, #luckysheet-scrollbar-y, .luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
     e.preventDefault();
+    const dy = e.deltaY;
+    if (dy) {
+      const syEl = dovBars().sy;
+      const before = syEl ? syEl.scrollTop : null;
+      setTimeout(() => {
+        const b2 = dovBars();
+        if (!b2.sy || b2.sy.scrollTop === before) dovScrollBy(dy);
+      }, 40);
+    }
   }, { passive: false });
 
   // גלילה אוטומטית כשגוררים סימון אל הקצה העליון/התחתון
@@ -599,10 +629,7 @@
       return;
     }
     if (!dovAutoTimer) {
-      dovAutoTimer = setInterval(() => {
-        const b = dovBars();
-        if (b.sy) b.sy.scrollTop = Math.max(0, b.sy.scrollTop + dovAutoVy);
-      }, 50);
+      dovAutoTimer = setInterval(() => { dovScrollBy(dovAutoVy); }, 50);
     }
   }
   function dovEdgeCheck(clientY) {
@@ -613,7 +640,7 @@
   }
   sheetRoot.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
-    if (e.target && e.target.closest && e.target.closest(".luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
+    if (e.target && e.target.closest && e.target.closest("#luckysheet-scrollbar-x, #luckysheet-scrollbar-y, .luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
     dovDragging = true;
   });
   document.addEventListener("mousemove", (e) => { if (dovDragging) dovEdgeCheck(e.clientY); });
@@ -655,9 +682,7 @@
           applyZoom(dovPinch.z0 * (d / dovPinch.d0));
         }
       } else if (dovPinch.mode === "pan") {
-        const b = dovBars();
-        if (b.sy) b.sy.scrollTop = Math.max(0, b.sy.scrollTop - (my - dovPinch.y0));
-        if (b.sx) b.sx.scrollLeft = Math.max(0, b.sx.scrollLeft - (mx - dovPinch.x0));
+        dovScrollBy(-(my - dovPinch.y0), -(mx - dovPinch.x0));
         dovPinch.y0 = my;
         dovPinch.x0 = mx;
       }
@@ -685,10 +710,10 @@
         const bottomPx = rows[row] * z;
         const topPx = (row > 0 ? rows[row - 1] : 0) * z;
         const b = dovBars();
-        if (!b.sy) return;
-        const viewH = b.sy.clientHeight;
-        if (bottomPx > b.sy.scrollTop + viewH - 8) b.sy.scrollTop = bottomPx - viewH + 30;
-        else if (topPx < b.sy.scrollTop) b.sy.scrollTop = Math.max(0, topPx - 8);
+        const cur = dovGetScrollTop();
+        const viewH = (b.sy && b.sy.clientHeight) || sheetRoot.clientHeight;
+        if (bottomPx > cur + viewH - 8) dovScrollTo(bottomPx - viewH + 30);
+        else if (topPx < cur) dovScrollTo(Math.max(0, topPx - 8));
       } catch (err) {}
     }, 60);
   });
