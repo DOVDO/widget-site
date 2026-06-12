@@ -36,8 +36,8 @@
   #pinLayer { display: none; position: fixed; inset: 0 46px 0 0; z-index: 9000; cursor: crosshair; background: rgba(11,110,153,.05); }
   .dovPinMark { position: absolute; transform: translate(-50%, -100%); font-size: 22px; pointer-events: none; }
   #pinHint { position: absolute; top: 8px; right: 8px; background: #0b6e99; color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
-  #pinRect { position: absolute; pointer-events: auto; border: 2px dashed #0b6e99; background: rgba(11,110,153,.06); box-shadow: 0 0 0 100000px rgba(15,15,15,.28); cursor: move; touch-action: none; }
-  .pinHandle { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; }
+  #pinRect { position: absolute; pointer-events: none; border: 2px dashed #0b6e99; background: rgba(11,110,153,.06); box-shadow: 0 0 0 100000px rgba(15,15,15,.28); }
+  .pinHandle { position: absolute; pointer-events: auto; touch-action: none; width: 14px; height: 14px; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; }
   .pinHandle.nw { top: -9px; left: -9px; cursor: nwse-resize; }
   .pinHandle.ne { top: -9px; right: -9px; cursor: nesw-resize; }
   .pinHandle.sw { bottom: -9px; left: -9px; cursor: nesw-resize; }
@@ -46,6 +46,9 @@
   #pinBar button { border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; cursor: pointer; padding: 3px 10px; font-size: 13px; }
   #pinBar button.primary { background: #0b6e99; color: #fff; border-color: #0b6e99; }
   #pinBar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .pinMove { position: absolute; pointer-events: auto; touch-action: none; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; cursor: move; font-size: 16px; color: #0b6e99; box-shadow: 0 2px 8px rgba(0,0,0,.25); user-select: none; }
+  .dovListItem { display: block; width: 100%; text-align: right; border: 1px solid #e3e2de; background: #fff; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  .dovListItem:hover { background: #f1f1ef; }
 
   /* ===== שגיאות ===== */
   #errBanner { display: none; position: fixed; top: 46px; inset-inline: 8px; z-index: 99999; background: #fbe4e4; color: #e03e3e; border: 1px solid #e03e3e; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; }
@@ -91,6 +94,7 @@
   <button id="railBg" title="רקע: רשת / שורות / ריק">🔲</button>
   <button id="railPins" title="צילום אזור בין 2 נעצים">📌</button>
   <button id="railSync" title="רענון וסנכרון מהענן">🔄</button>
+  <button id="railList" title="כל האובייקטים בקנבס — קפיצה מהירה">🧭</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
 <div id="pinLayer"></div>
@@ -411,8 +415,19 @@
   // העתקת תמונה — אותה דרך כמו בגיליון: קודם execCommand (עובד בהטמעה), ורק אז ה־ API החדש
   function copyImageData(stagedImg, blob) {
     if (stagedImg && !stagedImg.dataset.ready) { toast("התמונה עדיין נטענת — נסה שוב בעוד רגע"); return; }
-    var ok = false;
+    // הטריק: מיירטים את אירוע ההעתקה וכותבים ללוח בעצמנו HTML עם התמונה —
+    // כתיבה כזו בתוך אירוע העתקה מותרת גם בהטמעה, בלי הרשאות מיוחדות
+    var ok = false, wrote = false;
+    function onCopy(e) {
+      try {
+        e.clipboardData.setData("text/html", '<img src="' + stagedImg.src + '">');
+        e.clipboardData.setData("text/plain", " ");
+        e.preventDefault();
+        wrote = true;
+      } catch (e1) {}
+    }
     if (stagedImg) {
+      document.addEventListener("copy", onCopy, true);
       try {
         var rng = document.createRange();
         rng.selectNode(stagedImg);
@@ -422,8 +437,9 @@
         ok = document.execCommand("copy");
         selObj.removeAllRanges();
       } catch (e) { ok = false; }
+      document.removeEventListener("copy", onCopy, true);
     }
-    if (ok) { toast("התמונה הועתקה ✓ — הדבק בנושן עם Ctrl+V"); return; }
+    if (ok && wrote) { toast("הועתק ✓ — הדבק עם Ctrl+V. לא הודבק? קליק ימני על התמונה"); return; }
     try {
       if (navigator.clipboard && window.ClipboardItem) {
         var item;
@@ -550,7 +566,7 @@
     if (!api) return;
     if (pinLayer.style.display === "block") { pinReset(); return; }
     pinReset();
-    pinLayer.innerHTML = "<div id='pinHint'>📌 לחץ על 2 פינות של האזור — ואז אפשר להזיז, לשנות גודל ולצלם</div>";
+    pinLayer.innerHTML = "<div id='pinHint'>📌 לחץ על 2 פינות של האזור — הקנבס נשאר חופשי; את המסגרת מזיזים רק בידית ✥</div>";
     pinLayer.style.display = "block";
   });
   pinLayer.addEventListener("click", function (ev) {
@@ -577,6 +593,12 @@
       h.dataset.c = c;
       pinRectEl.appendChild(h);
     });
+    // ידית הזזה ייעודית במרכז — רק דרכה מזיזים את המסגרת, כל שאר השטח שקוף לקנבס
+    var grip = document.createElement("div");
+    grip.className = "pinMove";
+    grip.textContent = "✥";
+    grip.title = "גרירת המסגרת — רק מכאן";
+    pinRectEl.appendChild(grip);
     pinToolbar = document.createElement("div");
     pinToolbar.id = "pinBar";
     var shoot = document.createElement("button");
@@ -620,12 +642,13 @@
     pinRectEl.addEventListener("pointerdown", function (ev) {
       var t = ev.target;
       if (t.classList.contains("pinHandle")) mode = t.dataset.c;
-      else mode = "move";
+      else if (t.classList.contains("pinMove")) mode = "move";
+      else return;
       sx = ev.clientX; sy = ev.clientY;
       start = { x: pinRectBox.x, y: pinRectBox.y, w: pinRectBox.w, h: pinRectBox.h };
       ev.preventDefault();
       ev.stopPropagation();
-      try { pinRectEl.setPointerCapture(ev.pointerId); } catch (e) {}
+      try { t.setPointerCapture(ev.pointerId); } catch (e) {}
     });
     pinRectEl.addEventListener("pointermove", function (ev) {
       if (!mode) return;
@@ -683,6 +706,58 @@
     try { if (window.dovCloud && dovCloud.flush) dovCloud.flush(); } catch (e) {}
     try { sessionStorage.removeItem("dov-cloud-reload-" + docId); } catch (e) {}
     setTimeout(function () { location.reload(); }, 700);
+  });
+
+  // ===== נווט אובייקטים: רשימת כל מה שקיים בקנבס + קפיצה מהירה =====
+  var navTypeNames = { rectangle: "▭ מלבן", ellipse: "◯ אליפסה", diamond: "◇ מעוין", arrow: "➜ חץ", line: "─ קו", freedraw: "✏️ ציור חופשי", text: "🅰 טקסט", image: "🖼 תמונה", embeddable: "🌐 הטמעה", frame: "🖽 מסגרת" };
+  var navBack = null;
+  document.getElementById("railList").addEventListener("click", function () {
+    if (!api) return;
+    var els = api.getSceneElements().filter(function (el) { return !el.isDeleted; });
+    dovModal("🧭 האובייקטים בקנבס (" + els.length + ")", function (box, close) {
+      var as0 = api.getAppState();
+      var here = { scrollX: as0.scrollX, scrollY: as0.scrollY, zoom: as0.zoom };
+      if (navBack) {
+        var back = document.createElement("button");
+        back.className = "dovListItem";
+        back.style.borderColor = "#0b6e99";
+        back.textContent = "↩ חזרה למיקום שלפני הקפיצה האחרונה";
+        back.addEventListener("click", function () {
+          var b = navBack; navBack = null;
+          try { api.updateScene({ appState: { scrollX: b.scrollX, scrollY: b.scrollY, zoom: b.zoom } }); } catch (e) {}
+          close();
+        });
+        box.appendChild(back);
+      }
+      var list = document.createElement("div");
+      list.style.cssText = "max-height:48vh;overflow:auto;display:flex;flex-direction:column;gap:4px;margin-top:6px;";
+      if (!els.length) {
+        var empty = document.createElement("div");
+        empty.className = "hint";
+        empty.textContent = "הקנבס ריק — אין עדיין אובייקטים";
+        list.appendChild(empty);
+      }
+      els.forEach(function (el) {
+        var label = navTypeNames[el.type] || ("• " + el.type);
+        if (el.type === "text" && el.text) {
+          var t = el.text.replace(/\s+/g, " ").trim();
+          label = "🅰 " + (t.length > 38 ? t.slice(0, 38) + "…" : (t || "טקסט ריק"));
+        }
+        if (el.type === "embeddable" && el.link) label = "🌐 " + el.link.slice(0, 38);
+        var b = document.createElement("button");
+        b.className = "dovListItem";
+        b.textContent = label;
+        b.addEventListener("click", function () {
+          navBack = here;
+          try { api.scrollToContent([el], { fitToContent: true, animate: true }); }
+          catch (e) { try { api.scrollToContent([el]); } catch (e2) {} }
+          close();
+          toast("קפצתי לאובייקט — 🧭 ↩ יחזיר אותך למיקום הקודם");
+        });
+        list.appendChild(b);
+      });
+      box.appendChild(list);
+    });
   });
 
   // ===== שאר כפתורי הסרגל =====
