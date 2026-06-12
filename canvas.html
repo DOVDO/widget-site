@@ -32,6 +32,11 @@
   #dovRail button.on { border-color: #0b6e99; background: #e7f3f8; }
   #dovDot { width: 12px; height: 12px; border-radius: 50%; margin: 4px auto 0; background: #9b9a97; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d3d1cb; cursor: pointer; }
 
+  /* ===== שכבת הנעצים — צילום אזור מדויק ===== */
+  #pinLayer { display: none; position: fixed; inset: 0 46px 0 0; z-index: 9000; cursor: crosshair; background: rgba(11,110,153,.05); }
+  .dovPinMark { position: absolute; transform: translate(-50%, -100%); font-size: 22px; pointer-events: none; }
+  #pinHint { position: absolute; top: 8px; right: 8px; background: #0b6e99; color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12.5px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+
   /* ===== שגיאות ===== */
   #errBanner { display: none; position: fixed; top: 46px; inset-inline: 8px; z-index: 99999; background: #fbe4e4; color: #e03e3e; border: 1px solid #e03e3e; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; }
 
@@ -74,8 +79,10 @@
   <button id="railTools" title="סרגל כלים — צורות, טקסט, תמונה">🧰</button>
   <button id="railBottom" title="סרגל תחתון — צבעים, ביטול וחזרה, תפריט">🎛️</button>
   <button id="railBg" title="רקע: רשת / שורות / ריק">🔲</button>
+  <button id="railPins" title="צילום אזור בין 2 נעצים">📌</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
+<div id="pinLayer"></div>
 <div id="errBanner"></div>
 <div id="toast"></div>
 
@@ -381,35 +388,181 @@
       quality: 1,
       exportPadding: 24
     }).then(function (blob) {
-      var url = URL.createObjectURL(blob);
-      dovModal("🖨️ ייצוא — " + scope, function (box) {
-        var img = document.createElement("img");
-        img.src = url;
-        box.appendChild(img);
-        var row = document.createElement("div");
-        row.className = "btnRow";
-        var dl = document.createElement("button");
-        dl.textContent = "⬇️ הורדת תמונה";
-        dl.className = "primary";
-        dl.addEventListener("click", function () {
-          var a = document.createElement("a");
-          a.href = url;
-          a.download = ((docRec.name || "canvas").replace(/[\\/:*?"<>|]/g, "-")) + ".png";
-          a.click();
-        });
-        var op = document.createElement("button");
-        op.textContent = "🖨️ פתח בכרטיסייה להדפסה";
-        op.addEventListener("click", function () { window.open(url, "_blank"); });
-        row.appendChild(dl);
-        row.appendChild(op);
-        box.appendChild(row);
-        var hint = document.createElement("div");
-        hint.className = "hint";
-        hint.textContent = "להדפסה: פתח בכרטיסייה ואז Ctrl+P. כדי לייצא רק חלק — סמן אובייקטים בקנבס לפני הלחיצה על ייצוא.";
-        box.appendChild(hint);
-      });
+      showExportModal("🖨️ ייצוא — " + scope, blob, "להדפסה: פתח בכרטיסייה ואז Ctrl+P. כדי לייצא רק חלק — סמן אובייקטים, או צלם אזור מדויק עם הנעצים 📌 שבעמודה הימנית.");
     }).catch(function (e) { dovErr("ייצוא נכשל: " + e.message); });
   });
+
+  // ===== כלי ייצוא משותפים: העתקה / PNG / PDF / הדפסה =====
+  function safeName() { return ((docRec.name || "canvas").replace(/[\\/:*?"<>|]/g, "-")); }
+
+  function copyImageBlob(blob) {
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        var item;
+        try { item = new ClipboardItem({ "image/png": blob }); }
+        catch (e) { item = new ClipboardItem({ "image/png": Promise.resolve(blob) }); }
+        navigator.clipboard.write([item]).then(
+          function () { toast("התמונה הועתקה ✓ — הדבק בנושן עם Ctrl+V"); },
+          function () { toast("⚠️ הדפדפן חסם העתקת תמונה בהטמעה — השתמש בהורדה וגרור לנושן"); }
+        );
+      } else toast("⚠️ הדפדפן לא תומך בהעתקת תמונה — השתמש בהורדה");
+    } catch (e) { toast("⚠️ העתקה נכשלה — השתמש בהורדה"); }
+  }
+
+  var jspdfPromise = null;
+  function ensureJsPDF() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+    if (!jspdfPromise) {
+      jspdfPromise = new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
+        s.onload = function () { resolve(); };
+        s.onerror = function () { jspdfPromise = null; reject(new Error("טעינת ספריית ה־ PDF נכשלה — בדוק חיבור אינטרנט")); };
+        document.head.appendChild(s);
+      });
+    }
+    return jspdfPromise;
+  }
+  function downloadPdf(blob, name) {
+    ensureJsPDF().then(function () {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var im = new Image();
+        im.onload = function () {
+          try {
+            var w = im.naturalWidth, h = im.naturalHeight;
+            var doc = new jspdf.jsPDF({ orientation: w >= h ? "l" : "p", unit: "px", format: [w, h], hotfixes: ["px_scaling"] });
+            doc.addImage(fr.result, "PNG", 0, 0, w, h);
+            doc.save(name + ".pdf");
+            toast("PDF נוצר ✓");
+          } catch (e) { dovErr("יצירת PDF נכשלה: " + e.message); }
+        };
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(blob);
+    }, function (e) { toast("⚠️ " + e.message); });
+  }
+
+  function showExportModal(title, blob, hintText) {
+    var url = URL.createObjectURL(blob);
+    dovModal(title, function (box) {
+      var img = document.createElement("img");
+      img.src = url;
+      box.appendChild(img);
+      var row = document.createElement("div");
+      row.className = "btnRow";
+      function btn(label, fn, primary) {
+        var b = document.createElement("button");
+        b.textContent = label;
+        if (primary) b.className = "primary";
+        b.addEventListener("click", fn);
+        row.appendChild(b);
+      }
+      btn("📋 העתקת תמונה", function () { copyImageBlob(blob); }, true);
+      btn("⬇️ PNG", function () {
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = safeName() + ".png";
+        a.click();
+      });
+      btn("📄 PDF", function () { downloadPdf(blob, safeName()); });
+      btn("🖨️ הדפסה", function () { window.open(url, "_blank"); });
+      box.appendChild(row);
+      var hint = document.createElement("div");
+      hint.className = "hint";
+      hint.textContent = hintText;
+      box.appendChild(hint);
+    });
+  }
+
+  // ===== נעצים: צילום מלבן מדויק בין 2 נקודות =====
+  var pinLayer = document.getElementById("pinLayer");
+  var pinPts = [];
+  function pinScenePoint(ev) {
+    var as = api.getAppState();
+    var rect = document.getElementById("canvasRoot").getBoundingClientRect();
+    var z = (as.zoom && as.zoom.value) || 1;
+    return {
+      x: (ev.clientX - rect.left) / z - as.scrollX,
+      y: (ev.clientY - rect.top) / z - as.scrollY
+    };
+  }
+  function pinReset() {
+    pinPts = [];
+    pinLayer.style.display = "none";
+    pinLayer.innerHTML = "";
+  }
+  document.getElementById("railPins").addEventListener("click", function () {
+    if (!api) return;
+    if (pinLayer.style.display === "block") { pinReset(); return; }
+    pinPts = [];
+    pinLayer.innerHTML = "<div id='pinHint'>📌 לחץ על 2 פינות של האזור לצילום (לחיצה נוספת על 📌 מבטלת)</div>";
+    pinLayer.style.display = "block";
+  });
+  pinLayer.addEventListener("click", function (ev) {
+    var p = pinScenePoint(ev);
+    pinPts.push(p);
+    var mark = document.createElement("div");
+    mark.className = "dovPinMark";
+    mark.textContent = "📌";
+    mark.style.left = ev.clientX + "px";
+    mark.style.top = ev.clientY + "px";
+    pinLayer.appendChild(mark);
+    if (pinPts.length === 2) {
+      var r = {
+        x1: Math.min(pinPts[0].x, pinPts[1].x), y1: Math.min(pinPts[0].y, pinPts[1].y),
+        x2: Math.max(pinPts[0].x, pinPts[1].x), y2: Math.max(pinPts[0].y, pinPts[1].y)
+      };
+      pinReset();
+      openPinExport(r);
+    }
+  });
+  function openPinExport(r) {
+    var includePartial = true;
+    function doExport(close) {
+      var all = api.getSceneElements();
+      var inside = all.filter(function (el) {
+        var x1 = Math.min(el.x, el.x + el.width), x2 = Math.max(el.x, el.x + el.width);
+        var y1 = Math.min(el.y, el.y + el.height), y2 = Math.max(el.y, el.y + el.height);
+        if (includePartial) return x1 < r.x2 && x2 > r.x1 && y1 < r.y2 && y2 > r.y1;
+        return x1 >= r.x1 && x2 <= r.x2 && y1 >= r.y1 && y2 <= r.y2;
+      });
+      // שתי פינות שקופות שמכריחות את החיתוך להיות בדיוק המלבן שבין הנעצים
+      var corners = ExcalidrawLib.convertToExcalidrawElements([
+        { type: "rectangle", x: r.x1, y: r.y1, width: 1, height: 1, opacity: 0 },
+        { type: "rectangle", x: r.x2 - 1, y: r.y2 - 1, width: 1, height: 1, opacity: 0 }
+      ]);
+      ExcalidrawLib.exportToBlob({
+        elements: inside.concat(corners),
+        appState: { viewBackgroundColor: "#ffffff", exportWithDarkMode: false },
+        files: api.getFiles(),
+        mimeType: "image/png",
+        quality: 1,
+        exportPadding: 0
+      }).then(function (blob) {
+        close();
+        showExportModal("📌 צילום בין הנעצים", blob, (includePartial ? "נכללו גם אובייקטים חופפים. " : "נכללו רק אובייקטים שבפנים במלואם. ") + inside.length + " אובייקטים בצילום.");
+      }).catch(function (e) { dovErr("צילום נכשל: " + e.message); });
+    }
+    dovModal("📌 צילום בין הנעצים", function (box, close) {
+      var lab = document.createElement("label");
+      lab.style.display = "flex"; lab.style.alignItems = "center"; lab.style.gap = "6px"; lab.style.cursor = "pointer";
+      var cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = true;
+      cb.addEventListener("change", function () { includePartial = cb.checked; });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode("לכלול אובייקטים שרק חלקם בתוך האזור (חופפים)"));
+      box.appendChild(lab);
+      var row = document.createElement("div");
+      row.className = "btnRow";
+      var go = document.createElement("button");
+      go.textContent = "📸 צלם";
+      go.className = "primary";
+      go.addEventListener("click", function () { doExport(close); });
+      row.appendChild(go);
+      box.appendChild(row);
+    });
+  }
 
   // ===== שאר כפתורי הסרגל =====
   document.getElementById("homeBtn").addEventListener("click", function () { location.href = "index.html"; });
