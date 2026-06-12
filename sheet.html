@@ -564,11 +564,134 @@
   setTimeout(injectExtraMenu, 2000);
   setTimeout(injectExtraMenu, 5000);
 
-  // ----- בליעת גלילה: שלא תזלוג לדף הנושן -----
+  // ----- גלילה, מגע וזום בצביטה -----
+  function dovBars() {
+    return {
+      sy: document.querySelector(".luckysheet-scrollbar-y"),
+      sx: document.querySelector(".luckysheet-scrollbar-x"),
+    };
+  }
+
+  // בליעת גלילה שלא תזלוג לנושן + זום בצביטה בטאצ'-פד (Ctrl+גלגלת)
+  let dovLastWheelZoom = 0;
   sheetRoot.addEventListener("wheel", (e) => {
+    if (e.ctrlKey) {
+      e.preventDefault();
+      const now = Date.now();
+      if (now - dovLastWheelZoom > 80) {
+        dovLastWheelZoom = now;
+        applyZoom(currentZoom() * (e.deltaY < 0 ? 1.06 : 0.94));
+      }
+      return;
+    }
     if (e.target && e.target.closest && e.target.closest(".luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
     e.preventDefault();
   }, { passive: false });
+
+  // גלילה אוטומטית כשגוררים סימון אל הקצה העליון/התחתון
+  let dovAutoVy = 0;
+  let dovAutoTimer = null;
+  let dovDragging = false;
+  function dovSetAuto(vy) {
+    dovAutoVy = vy;
+    if (!vy) {
+      if (dovAutoTimer) { clearInterval(dovAutoTimer); dovAutoTimer = null; }
+      return;
+    }
+    if (!dovAutoTimer) {
+      dovAutoTimer = setInterval(() => {
+        const b = dovBars();
+        if (b.sy) b.sy.scrollTop = Math.max(0, b.sy.scrollTop + dovAutoVy);
+      }, 50);
+    }
+  }
+  function dovEdgeCheck(clientY) {
+    const rect = sheetRoot.getBoundingClientRect();
+    if (clientY > rect.bottom - 28) dovSetAuto(Math.min(60, 14 + (clientY - (rect.bottom - 28))));
+    else if (clientY < rect.top + 46 && clientY >= rect.top) dovSetAuto(-16);
+    else dovSetAuto(0);
+  }
+  sheetRoot.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    if (e.target && e.target.closest && e.target.closest(".luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
+    dovDragging = true;
+  });
+  document.addEventListener("mousemove", (e) => { if (dovDragging) dovEdgeCheck(e.clientY); });
+  document.addEventListener("mouseup", () => { dovDragging = false; dovSetAuto(0); });
+
+  // מגע: שתי אצבעות = גלילה חופשית או זום בצביטה; אצבע אחת ליד הקצה = גלילה תוך כדי סימון
+  let dovPinch = null;
+  function dovDist(t) {
+    const dx = t[0].clientX - t[1].clientX;
+    const dy = t[0].clientY - t[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  sheetRoot.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      dovPinch = {
+        d0: dovDist(e.touches),
+        z0: currentZoom(),
+        x0: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y0: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        mode: null,
+        last: 0,
+      };
+    }
+  }, { passive: true });
+  sheetRoot.addEventListener("touchmove", (e) => {
+    if (e.touches.length === 2 && dovPinch) {
+      e.preventDefault();
+      const d = dovDist(e.touches);
+      const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      if (!dovPinch.mode) {
+        if (Math.abs(d - dovPinch.d0) > 18) dovPinch.mode = "zoom";
+        else if (Math.abs(my - dovPinch.y0) > 14 || Math.abs(mx - dovPinch.x0) > 14) dovPinch.mode = "pan";
+      }
+      if (dovPinch.mode === "zoom") {
+        const now = Date.now();
+        if (now - dovPinch.last > 90) {
+          dovPinch.last = now;
+          applyZoom(dovPinch.z0 * (d / dovPinch.d0));
+        }
+      } else if (dovPinch.mode === "pan") {
+        const b = dovBars();
+        if (b.sy) b.sy.scrollTop = Math.max(0, b.sy.scrollTop - (my - dovPinch.y0));
+        if (b.sx) b.sx.scrollLeft = Math.max(0, b.sx.scrollLeft - (mx - dovPinch.x0));
+        dovPinch.y0 = my;
+        dovPinch.x0 = mx;
+      }
+      return;
+    }
+    if (e.touches.length === 1) dovEdgeCheck(e.touches[0].clientY);
+  }, { passive: false });
+  sheetRoot.addEventListener("touchend", (e) => {
+    if (e.touches.length < 2) dovPinch = null;
+    if (e.touches.length === 0) dovSetAuto(0);
+  }, { passive: true });
+
+  // מעקב מקלדת: שהתצוגה תרד ותעלה יחד עם הסימון (חיצים / Enter)
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowDown", "ArrowUp", "Enter", "PageDown", "PageUp"].indexOf(e.key) === -1) return;
+    setTimeout(() => {
+      try {
+        const rng = luckysheet.getRange();
+        if (!rng || !rng[0]) return;
+        const row = rng[0].row[1];
+        const sheet = luckysheet.getSheet();
+        const rows = sheet && sheet.visibledatarow;
+        if (!rows || rows[row] == null) return;
+        const z = currentZoom();
+        const bottomPx = rows[row] * z;
+        const topPx = (row > 0 ? rows[row - 1] : 0) * z;
+        const b = dovBars();
+        if (!b.sy) return;
+        const viewH = b.sy.clientHeight;
+        if (bottomPx > b.sy.scrollTop + viewH - 8) b.sy.scrollTop = bottomPx - viewH + 30;
+        else if (topPx < b.sy.scrollTop) b.sy.scrollTop = Math.max(0, topPx - 8);
+      } catch (err) {}
+    }, 60);
+  });
 
   // ----- זום -----
   function applyZoom(z) {
