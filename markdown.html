@@ -148,6 +148,9 @@
   <div id="dropLine"></div>
 
 <script src="storage.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="cloud.js"></script>
 <script src="links-ui.js"></script>
 <script>
   // =====================================================
@@ -594,6 +597,27 @@
   } catch (e) {}
 
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
+
+  // ===== סנכרון ענן של הקובץ הנוכחי =====
+  (function () {
+    try {
+      if (!window.dovCloud || !dovCloud.spaceId()) return;
+      const stEl2 = document.getElementById("saveStatus");
+      if (stEl2) dovCloud.bindStatus(stEl2);
+      const cid = new URLSearchParams(location.search).get("id");
+      if (!cid) return;
+      const flag = "dov-cloud-reload-" + cid;
+      dovCloud.pullDoc(cid).then(function (changed) {
+        if (changed && !sessionStorage.getItem(flag)) {
+          sessionStorage.setItem(flag, "1");
+          location.reload();
+        } else if (!changed) {
+          sessionStorage.removeItem(flag);
+        }
+      });
+    } catch (e) { console.error(e); }
+  })();
+
 </script>
 </body>
 </html>

@@ -77,6 +77,10 @@
 </style>
 </head>
 <body>
+<div id="cloudBar" style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;color:#787774;border-bottom:1px solid #f1f1ef;direction:rtl">
+  <button id="cloudBtn" style="border:1px solid #d3d1cb;background:#fff;border-radius:5px;cursor:pointer;padding:3px 10px;font-size:12px">☁️ ענן</button>
+  <span id="cloudStatus">ענן: לא מחובר</span>
+</div>
 
   <header>
     <div id="crumbs"></div>
@@ -89,7 +93,7 @@
 
   <main id="list"></main>
 
-  <footer>גרסה 0.19 — שמירה מקומית בדפדפן זה</footer>
+  <footer>גרסה 0.20 — שמירה מקומית בדפדפן זה</footer>
 
   <div id="moveOverlay">
     <div id="moveBox">
@@ -100,6 +104,9 @@
   </div>
 
 <script src="storage.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="cloud.js"></script>
 <script src="links-ui.js"></script>
 <script>
   let currentFolderId = null;
@@ -322,6 +329,97 @@
   });
 
   render();
+
+  // ===== חיבור לענן =====
+  (function () {
+    const stEl = document.getElementById("cloudStatus");
+    const btn = document.getElementById("cloudBtn");
+    if (!window.dovCloud) { stEl.textContent = "ענן: הספרייה לא נטענה"; return; }
+    dovCloud.bindStatus(stEl);
+    function startPull() {
+      dovCloud.pullAll().then((changed) => { if (changed) render(); });
+    }
+    function mkBtn(text, primary) {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.style.cssText = primary
+        ? "border:1px solid #2383e2;background:#2383e2;color:#fff;border-radius:5px;cursor:pointer;padding:6px 12px;margin:0 0 0 6px;font-size:13px"
+        : "border:1px solid #d3d1cb;background:#fff;border-radius:5px;cursor:pointer;padding:5px 10px;margin:0 0 0 6px;font-size:13px";
+      return b;
+    }
+    function cloudModal() {
+      const ov = document.createElement("div");
+      ov.style.cssText = "position:fixed;inset:0;background:rgba(15,15,15,.45);display:flex;align-items:center;justify-content:center;z-index:9999";
+      ov.addEventListener("click", (e) => { if (e.target === ov) document.body.removeChild(ov); });
+      const box = document.createElement("div");
+      box.style.cssText = "background:#fff;border-radius:10px;padding:18px;width:92%;max-width:430px;max-height:85vh;overflow:auto;box-shadow:0 8px 30px rgba(0,0,0,.25);direction:rtl";
+      const h = document.createElement("h3");
+      h.textContent = "☁️ סנכרון בענן";
+      h.style.margin = "0 0 10px";
+      box.appendChild(h);
+      const cur = dovCloud.spaceId();
+      const p = document.createElement("div");
+      p.style.cssText = "font-size:13px;color:#37352f;margin-bottom:10px;line-height:1.5";
+      box.appendChild(p);
+      if (cur) {
+        p.textContent = "מחובר למרחב. זה המזהה הסודי שלך — שמור אותו במקום בטוח, ואיתו תתחבר מכל מכשיר:";
+        const inp = document.createElement("input");
+        inp.value = cur;
+        inp.readOnly = true;
+        inp.style.cssText = "width:100%;box-sizing:border-box;padding:6px;border:1px solid #d3d1cb;border-radius:5px;direction:ltr;font-size:12px;margin-bottom:10px";
+        inp.addEventListener("click", () => inp.select());
+        box.appendChild(inp);
+        const cp = mkBtn("📋 העתק מזהה", false);
+        cp.addEventListener("click", () => {
+          inp.select();
+          try { document.execCommand("copy"); cp.textContent = "הועתק ✓"; } catch (e) {}
+        });
+        box.appendChild(cp);
+        const sync = mkBtn("🔄 סנכרן עכשיו", false);
+        sync.addEventListener("click", () => { document.body.removeChild(ov); startPull(); });
+        box.appendChild(sync);
+        const out = mkBtn("⏏️ נתק מכשיר זה", false);
+        out.addEventListener("click", () => {
+          if (confirm("לנתק את המכשיר הזה מהענן? הקבצים יישארו גם כאן וגם בענן.")) {
+            dovCloud.setSpaceId("");
+            document.body.removeChild(ov);
+            stEl.textContent = "ענן: לא מחובר";
+            stEl.style.color = "#787774";
+          }
+        });
+        box.appendChild(out);
+      } else {
+        p.textContent = "עוד לא מחובר. צור מרחב חדש — או הדבק מזהה קיים ממכשיר אחר. כל הקבצים המקומיים יועלו לענן אוטומטית.";
+        const mk = mkBtn("✨ צור מרחב חדש", true);
+        mk.addEventListener("click", () => {
+          dovCloud.setSpaceId(dovCloud.newSpaceId());
+          document.body.removeChild(ov);
+          startPull();
+        });
+        box.appendChild(mk);
+        const joinIn = document.createElement("input");
+        joinIn.placeholder = "...או הדבק כאן מזהה קיים";
+        joinIn.style.cssText = "width:100%;box-sizing:border-box;padding:6px;border:1px solid #d3d1cb;border-radius:5px;direction:ltr;font-size:12px;margin:12px 0 6px";
+        box.appendChild(joinIn);
+        const join = mkBtn("🔗 התחבר למזהה הזה", false);
+        join.style.margin = "0";
+        join.addEventListener("click", () => {
+          const v = joinIn.value.trim();
+          if (v.length < 16) { alert("המזהה קצר מדי — ודא שהעתקת את כולו"); return; }
+          dovCloud.setSpaceId(v);
+          document.body.removeChild(ov);
+          startPull();
+        });
+        box.appendChild(join);
+      }
+      ov.appendChild(box);
+      document.body.appendChild(ov);
+    }
+    btn.addEventListener("click", cloudModal);
+    if (dovCloud.spaceId()) startPull();
+    else stEl.textContent = "ענן: לא מחובר — לחץ ☁️ להפעלה";
+  })();
+
 </script>
 </body>
 </html>
