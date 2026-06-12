@@ -122,6 +122,7 @@
     <div class="hero">
       <button class="bigBtn" id="homeNewDoc"><span class="big">📝</span>מסמך חדש</button>
       <button class="bigBtn" id="homeNewSheet"><span class="big">📊</span>גיליון חדש</button>
+      <button class="bigBtn" id="homeNewCanvas"><span class="big">🎨</span>קנבס חדש</button>
       <button class="bigBtn alt" id="openExplorerBtn"><span class="big">🗂️</span>סייר הקבצים</button>
     </div>
     <details id="recentBox" open>
@@ -138,13 +139,14 @@
         <button id="homeBtn">🏠 בית</button>
         <button id="newDocBtn" class="primary">➕ מסמך</button>
         <button id="newSheetBtn" class="primary">➕ גיליון</button>
+        <button id="newCanvasBtn" class="primary">➕ קנבס</button>
         <button id="newFolderBtn">📁 תיקייה</button>
       </div>
     </header>
     <main id="list"></main>
   </div>
 
-  <footer>גרסה 0.21</footer>
+  <footer>גרסה 0.22</footer>
 
   <div id="moveOverlay">
     <div id="moveBox">
@@ -375,7 +377,8 @@
   }
 
   function openDocPage(d) {
-    location.href = (d.type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id);
+    const page = d.type === "sheet" ? "sheet.html" : d.type === "canvas" ? "canvas.html" : "markdown.html";
+    location.href = page + "?id=" + encodeURIComponent(d.id);
   }
 
   function docRow(d, inRecents) {
@@ -383,7 +386,7 @@
     row.className = "row";
     const icon = document.createElement("span");
     icon.className = "icon";
-    icon.textContent = d.type === "sheet" ? "📊" : "📝";
+    icon.textContent = d.type === "sheet" ? "📊" : d.type === "canvas" ? "🎨" : "📝";
     const main = document.createElement("div");
     main.className = "main";
     const name = document.createElement("div");
@@ -555,10 +558,12 @@
 
   document.getElementById("homeNewDoc").addEventListener("click", () => { currentFolderId = null; createAndOpen("markdown"); });
   document.getElementById("homeNewSheet").addEventListener("click", () => { currentFolderId = null; createAndOpen("sheet"); });
+  document.getElementById("homeNewCanvas").addEventListener("click", () => { currentFolderId = null; createAndOpen("canvas"); });
   document.getElementById("openExplorerBtn").addEventListener("click", showExplorer);
   document.getElementById("homeBtn").addEventListener("click", showHome);
   document.getElementById("newDocBtn").addEventListener("click", () => createAndOpen("markdown"));
   document.getElementById("newSheetBtn").addEventListener("click", () => createAndOpen("sheet"));
+  document.getElementById("newCanvasBtn").addEventListener("click", () => createAndOpen("canvas"));
   document.getElementById("newFolderBtn").addEventListener("click", () => {
     askText("שם התיקייה:", "", (name) => {
       createFolder(name, currentFolderId);

@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>קנבס אינסופי</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; font-family: "Segoe UI", "Heebo", Arial, sans-serif; background: #fff; color: #37352f; overflow: hidden; }
+
+  /* ===== סרגל עליון (מתחיל מתחת לאזור הריחוף של נושן) ===== */
+  #bar { display: flex; align-items: center; gap: 6px; padding: 46px 10px 6px 10px; border-bottom: 1px solid #f1f1ef; overflow-x: auto; overflow-y: hidden; flex: none; scrollbar-width: thin; }
+  #bar button { border: 1px solid #d3d1cb; background: #fff; border-radius: 5px; cursor: pointer; padding: 4px 9px; font-size: 13px; font-family: inherit; white-space: nowrap; flex: none; }
+  #bar button:hover { background: #f1f1ef; }
+  #docName { border: 1px solid transparent; border-radius: 5px; padding: 4px 6px; font-size: 13.5px; font-weight: 600; font-family: inherit; width: 150px; flex: none; background: transparent; }
+  #docName:hover, #docName:focus { border-color: #d3d1cb; background: #fff; outline: none; }
+  #saveStatus { font-size: 11.5px; color: #787774; white-space: nowrap; flex: none; margin-inline-start: auto; padding-inline-start: 8px; }
+
+  /* ===== הקנבס עצמו ===== */
+  #spacer { display: none; height: 42px; flex: none; }
+  body.noChrome #spacer { display: block; }
+  body.noChrome #bar { display: none; }
+  #canvasRoot { flex: 1; min-height: 0; position: relative; }
+  #canvasRoot > div { width: 100%; height: 100%; }
+  #showBtn { display: none; position: fixed; bottom: 14px; inset-inline-start: 14px; z-index: 9000; border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; cursor: pointer; padding: 5px 10px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); }
+  body.noChrome #showBtn { display: block; }
+
+  /* ===== שגיאות ===== */
+  #errBanner { display: none; position: fixed; top: 46px; inset-inline: 8px; z-index: 99999; background: #fbe4e4; color: #e03e3e; border: 1px solid #e03e3e; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; white-space: pre-wrap; }
+
+  /* ===== חלוניות (מודאלים) ===== */
+  .dovOverlay { position: fixed; inset: 0; background: rgba(15,15,15,.45); z-index: 99000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .dovBox { background: #fff; border-radius: 10px; box-shadow: 0 10px 36px rgba(0,0,0,.25); padding: 16px; width: 100%; max-width: 420px; max-height: 82vh; overflow: auto; direction: rtl; }
+  .dovBox h3 { margin: 0 0 12px; font-size: 15px; }
+  .dovBox .rowLine { display: flex; align-items: center; gap: 6px; padding: 6px 4px; border-bottom: 1px solid #f1f1ef; font-size: 13px; }
+  .dovBox .rowLine .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dovBox button { border: 1px solid #d3d1cb; background: #fff; border-radius: 5px; cursor: pointer; padding: 4px 9px; font-size: 12.5px; font-family: inherit; }
+  .dovBox button:hover { background: #f1f1ef; }
+  .dovBox button.primary { background: #0b6e99; border-color: #0b6e99; color: #fff; }
+  .dovBox button.danger { color: #e03e3e; border-color: #e03e3e; }
+  .dovBox input[type=text] { border: 1px solid #d3d1cb; border-radius: 5px; padding: 5px 8px; font-size: 13px; font-family: inherit; flex: 1; min-width: 0; }
+  .dovBox img { max-width: 100%; border: 1px solid #e3e2de; border-radius: 6px; }
+  .dovBox .btnRow { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .dovBox .hint { font-size: 11.5px; color: #787774; margin-top: 8px; }
+
+  #toast { position: fixed; bottom: 16px; inset-inline-end: 16px; background: #37352f; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; z-index: 99999; display: none; }
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <button id="homeBtn" title="חזרה לסייר הקבצים">🏠</button>
+  <input id="docName" title="שם הקובץ">
+  <button id="noteBtn" title="הוספת פתק צהוב למרכז המסך">📌 פתק</button>
+  <button id="viewsBtn" title="מיקומים שמורים בקנבס">📍 מיקומים</button>
+  <button id="exportBtn" title="ייצוא והדפסה של המסומן או של הכל">🖨️ ייצוא</button>
+  <button id="copyUrlBtn" title="העתקת קישור הקובץ (להטמעה בנושן)">📋 קישור</button>
+  <button id="linksBtn" title="היכן הקובץ משובץ בנושן">🔗</button>
+  <button id="hideBtn" title="הסתרת הסרגל — מסך נקי">👁️ הסתר</button>
+  <span id="saveStatus">טוען…</span>
+</div>
+<div id="spacer"></div>
+<div id="canvasRoot"></div>
+<button id="showBtn">👁️ הצג סרגל</button>
+<div id="errBanner"></div>
+<div id="toast"></div>
+
+<script src="storage.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="cloud.js"></script>
+<script src="links-ui.js"></script>
+
+<!-- ===== Excalidraw: React + הספרייה עצמה, עם גיבוי משני CDN ===== -->
+<script>window.EXCALIDRAW_ASSET_PATH = "https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/";</script>
+<script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+<script>if (!window.React) document.write('<script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"><\/script>');</script>
+<script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+<script>if (!window.ReactDOM) document.write('<script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"><\/script>');</script>
+<script src="https://unpkg.com/@excalidraw/excalidraw@0.17.6/dist/excalidraw.production.min.js"></script>
+<script>if (!window.ExcalidrawLib) { window.EXCALIDRAW_ASSET_PATH = "https://cdn.jsdelivr.net/npm/@excalidraw/excalidraw@0.17.6/dist/"; document.write('<script src="https://cdn.jsdelivr.net/npm/@excalidraw/excalidraw@0.17.6/dist/excalidraw.production.min.js"><\/script>'); }</script>
+
+<script>
+  // ===== דיווח שגיאות גלוי (כמו בשאר הדפים) =====
+  function dovErr(msg) {
+    var el = document.getElementById("errBanner");
+    el.textContent = "⚠️ שגיאה: " + msg;
+    el.style.display = "block";
+    setTimeout(function () { el.style.display = "none"; }, 12000);
+  }
+  window.addEventListener("error", function (e) { dovErr(e.message || "שגיאה לא ידועה"); });
+
+  function toast(msg) {
+    var t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.display = "block";
+    clearTimeout(toast._tm);
+    toast._tm = setTimeout(function () { t.style.display = "none"; }, 2500);
+  }
+
+  // ===== טעינת הקובץ מהאחסון =====
+  var qsParams = new URLSearchParams(location.search);
+  var docId = qsParams.get("id");
+  var docRec = docId ? getDoc(docId) : null;
+  if (!docRec) {
+    docRec = createDoc("canvas", null);
+    docId = docRec.id;
+    history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(docId));
+  }
+
+  var saved = {};
+  try { saved = JSON.parse(docRec.content || "{}") || {}; } catch (e) { saved = {}; }
+  var dovViews = Array.isArray(saved.views) ? saved.views : [];
+
+  var initAS = saved.appState || {};
+  delete initAS.collaborators; // אחרי JSON זה כבר לא Map — חייבים להסיר כדי לא להקריס
+
+  // ===== שמירה אוטומטית =====
+  var api = null;
+  var saveTimer = null;
+  var statusEl = document.getElementById("saveStatus");
+
+  function snapshotCanvas() {
+    var as = api.getAppState();
+    return {
+      engine: "excalidraw",
+      elements: api.getSceneElements(),
+      appState: {
+        viewBackgroundColor: as.viewBackgroundColor,
+        scrollX: as.scrollX,
+        scrollY: as.scrollY,
+        zoom: { value: (as.zoom && as.zoom.value) || 1 }
+      },
+      files: api.getFiles(),
+      views: dovViews
+    };
+  }
+
+  function doSave() {
+    if (!api) return;
+    try {
+      var s = JSON.stringify(snapshotCanvas());
+      updateDoc(docId, { content: s });
+      if (s.length > 850000) {
+        statusEl.textContent = "⚠️ הקובץ גדול — תמונות כבדות עלולות לא להסתנכרן לענן (מגבלת 1MB)";
+        statusEl.style.color = "#d9730d";
+      } else if (!window.dovCloud || !dovCloud.spaceId()) {
+        statusEl.textContent = "נשמר מקומית ✓";
+        statusEl.style.color = "#787774";
+      }
+    } catch (e) { dovErr("שמירה נכשלה: " + e.message); }
+  }
+
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(doSave, 800);
+  }
+
+  // ===== בניית הקנבס =====
+  function buildCanvas() {
+    if (!window.React || !window.ReactDOM || !window.ExcalidrawLib) {
+      dovErr("ספריית הקנבס לא נטענה — בדוק חיבור לאינטרנט ורענן את הדף");
+      statusEl.textContent = "⚠️ הקנבס לא נטען";
+      return;
+    }
+    var props = {
+      excalidrawAPI: function (a) { api = a; },
+      initialData: {
+        elements: saved.elements || [],
+        appState: initAS,
+        files: saved.files || {},
+        scrollToContent: !(initAS && typeof initAS.scrollX === "number")
+      },
+      langCode: "he-IL",
+      validateEmbeddable: true,
+      onChange: function () { scheduleSave(); },
+      UIOptions: { canvasActions: { loadScene: false } }
+    };
+    var App = function () {
+      return React.createElement("div", { style: { width: "100%", height: "100%" } },
+        React.createElement(ExcalidrawLib.Excalidraw, props));
+    };
+    try {
+      ReactDOM.createRoot(document.getElementById("canvasRoot")).render(React.createElement(App));
+      statusEl.textContent = "מוכן ✓";
+    } catch (e) { dovErr("בניית הקנבס נכשלה: " + e.message); }
+  }
+
+  // ===== שם הקובץ =====
+  var nameInput = document.getElementById("docName");
+  nameInput.value = docRec.name || "";
+  nameInput.addEventListener("change", function () {
+    var v = nameInput.value.trim();
+    if (v) { updateDoc(docId, { name: v }); toast("השם עודכן ✓"); }
+  });
+
+  // ===== חלונית כללית =====
+  function dovModal(titleText, buildFn) {
+    var ov = document.createElement("div");
+    ov.className = "dovOverlay";
+    var box = document.createElement("div");
+    box.className = "dovBox";
+    var h = document.createElement("h3");
+    h.textContent = titleText;
+    box.appendChild(h);
+    ov.appendChild(box);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    buildFn(box, close);
+    document.body.appendChild(ov);
+    return close;
+  }
+
+  // ===== העתקת קישור (clipboard חסום בהטמעה — execCommand קודם) =====
+  function copyText(t, okMsg) {
+    var ok = false;
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+    if (ok) { toast(okMsg || "הועתק ✓"); return; }
+    var showManual = function () {
+      dovModal("העתקה ידנית", function (box) {
+        var inp = document.createElement("input");
+        inp.type = "text";
+        inp.value = t;
+        inp.style.width = "100%";
+        inp.readOnly = true;
+        box.appendChild(inp);
+        var hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "סמן הכל (Ctrl+A) והעתק (Ctrl+C)";
+        box.appendChild(hint);
+        inp.focus(); inp.select();
+      });
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(function () { toast(okMsg || "הועתק ✓"); }, showManual);
+    } else showManual();
+  }
+
+  document.getElementById("copyUrlBtn").addEventListener("click", function () {
+    copyText(location.origin + location.pathname + "?id=" + encodeURIComponent(docId), "קישור הקובץ הועתק ✓");
+  });
+
+  // ===== פתק צהוב =====
+  document.getElementById("noteBtn").addEventListener("click", function () {
+    if (!api) return;
+    try {
+      var as = api.getAppState();
+      var z = (as.zoom && as.zoom.value) || 1;
+      var cx = -as.scrollX + (as.width / 2) / z - 110;
+      var cy = -as.scrollY + (as.height / 2) / z - 80;
+      var skel = [{
+        type: "rectangle", x: cx, y: cy, width: 220, height: 160,
+        backgroundColor: "#fef3c7", strokeColor: "#d9730d", fillStyle: "solid",
+        strokeWidth: 1, roundness: { type: 3 },
+        label: { text: "פתק חדש ✏️", fontSize: 20 }
+      }];
+      var els = ExcalidrawLib.convertToExcalidrawElements(skel);
+      api.updateScene({ elements: api.getSceneElements().concat(els) });
+      scheduleSave();
+    } catch (e) { dovErr("הוספת פתק נכשלה: " + e.message); }
+  });
+
+  // ===== מיקומים שמורים =====
+  document.getElementById("viewsBtn").addEventListener("click", function () {
+    if (!api) return;
+    dovModal("📍 מיקומים שמורים", function (box, close) {
+      var list = document.createElement("div");
+      box.appendChild(list);
+      function renderList() {
+        list.innerHTML = "";
+        if (!dovViews.length) {
+          var empty = document.createElement("div");
+          empty.className = "hint";
+          empty.textContent = "אין עדיין מיקומים שמורים. נווט למקום בקנבס, חזור לכאן ושמור אותו.";
+          list.appendChild(empty);
+        }
+        dovViews.forEach(function (v, i) {
+          var row = document.createElement("div");
+          row.className = "rowLine";
+          var nm = document.createElement("span");
+          nm.className = "grow";
+          nm.textContent = "📍 " + v.name;
+          var go = document.createElement("button");
+          go.textContent = "קפוץ";
+          go.className = "primary";
+          go.addEventListener("click", function () {
+            api.updateScene({ appState: { scrollX: v.scrollX, scrollY: v.scrollY, zoom: { value: v.zoom || 1 } } });
+            close();
+          });
+          var del = document.createElement("button");
+          del.textContent = "🗑️";
+          del.title = "מחיקת המיקום";
+          del.addEventListener("click", function () {
+            dovViews.splice(i, 1);
+            doSave();
+            renderList();
+          });
+          row.appendChild(nm);
+          row.appendChild(go);
+          row.appendChild(del);
+          list.appendChild(row);
+        });
+      }
+      renderList();
+      var addRow = document.createElement("div");
+      addRow.className = "btnRow";
+      var inp = document.createElement("input");
+      inp.type = "text";
+      inp.placeholder = "שם המיקום הנוכחי…";
+      var addBtn = document.createElement("button");
+      addBtn.textContent = "➕ שמור מיקום נוכחי";
+      addBtn.className = "primary";
+      addBtn.addEventListener("click", function () {
+        var nm = inp.value.trim() || ("מיקום " + (dovViews.length + 1));
+        var as = api.getAppState();
+        dovViews.push({ name: nm, scrollX: as.scrollX, scrollY: as.scrollY, zoom: (as.zoom && as.zoom.value) || 1 });
+        inp.value = "";
+        doSave();
+        renderList();
+      });
+      addRow.appendChild(inp);
+      addRow.appendChild(addBtn);
+      box.appendChild(addRow);
+    });
+  });
+
+  // ===== ייצוא והדפסה =====
+  document.getElementById("exportBtn").addEventListener("click", function () {
+    if (!api) return;
+    var as = api.getAppState();
+    var all = api.getSceneElements();
+    if (!all.length) { toast("הקנבס ריק — אין מה לייצא"); return; }
+    var selIds = as.selectedElementIds || {};
+    var sel = all.filter(function (e) { return selIds[e.id]; });
+    var els = sel.length ? sel : all;
+    var scope = sel.length ? ("המסומן (" + sel.length + " אובייקטים)") : "כל הקנבס";
+    ExcalidrawLib.exportToBlob({
+      elements: els,
+      appState: { viewBackgroundColor: "#ffffff", exportWithDarkMode: false },
+      files: api.getFiles(),
+      mimeType: "image/png",
+      quality: 1,
+      exportPadding: 24
+    }).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      dovModal("🖨️ ייצוא — " + scope, function (box) {
+        var img = document.createElement("img");
+        img.src = url;
+        box.appendChild(img);
+        var row = document.createElement("div");
+        row.className = "btnRow";
+        var dl = document.createElement("button");
+        dl.textContent = "⬇️ הורדת תמונה";
+        dl.className = "primary";
+        dl.addEventListener("click", function () {
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = ((docRec.name || "canvas").replace(/[\\/:*?"<>|]/g, "-")) + ".png";
+          a.click();
+        });
+        var op = document.createElement("button");
+        op.textContent = "🖨️ פתח בכרטיסייה להדפסה";
+        op.addEventListener("click", function () { window.open(url, "_blank"); });
+        row.appendChild(dl);
+        row.appendChild(op);
+        box.appendChild(row);
+        var hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "להדפסה: פתח בכרטיסייה ואז Ctrl+P. כדי לייצא רק חלק — סמן אובייקטים בקנבס לפני הלחיצה על ייצוא.";
+        box.appendChild(hint);
+      });
+    }).catch(function (e) { dovErr("ייצוא נכשל: " + e.message); });
+  });
+
+  // ===== שאר כפתורי הסרגל =====
+  document.getElementById("homeBtn").addEventListener("click", function () { location.href = "index.html"; });
+  document.getElementById("linksBtn").addEventListener("click", function () { openLinksModal(docId, function () {}); });
+  document.getElementById("hideBtn").addEventListener("click", function () { document.body.classList.add("noChrome"); });
+  document.getElementById("showBtn").addEventListener("click", function () { document.body.classList.remove("noChrome"); });
+
+  buildCanvas();
+
+  // ===== סנכרון ענן של הקובץ הנוכחי =====
+  (function () {
+    try {
+      if (!window.dovCloud || !dovCloud.spaceId()) return;
+      var stEl2 = document.getElementById("saveStatus");
+      if (stEl2) dovCloud.bindStatus(stEl2);
+      var flag = "dov-cloud-reload-" + docId;
+      dovCloud.pullDoc(docId).then(function (changed) {
+        if (changed && !sessionStorage.getItem(flag)) {
+          sessionStorage.setItem(flag, "1");
+          location.reload();
+        } else if (!changed) {
+          sessionStorage.removeItem(flag);
+        }
+      });
+    } catch (e) { console.error(e); }
+  })();
+</script>
+</body>
+</html>
