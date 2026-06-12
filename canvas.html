@@ -25,7 +25,7 @@
   #saveStatus { display: none; }
 
   /* ===== העמודה הימנית: שליטה בסרגלים + נורית סנכרון ===== */
-  #dovRail { position: fixed; top: 50%; right: 6px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
+  #dovRail { position: fixed; bottom: 64px; right: 8px; display: flex; flex-direction: column; gap: 6px; z-index: 8500; }
   #dovRail button { width: 34px; height: 34px; border: 1px solid #d3d1cb; background: #fff; border-radius: 8px; cursor: pointer; font-size: 15px; padding: 0; box-shadow: 0 1px 4px rgba(0,0,0,.14); }
   #dovRail button:hover { background: #f1f1ef; }
   #dovRail button.on { border-color: #0b6e99; background: #e7f3f8; }
@@ -181,7 +181,7 @@
   // ===== בניית הקנבס =====
   function buildCanvas() {
     if (!window.React || !window.ReactDOM || !window.ExcalidrawLib) {
-      dovErr("ספריית הקנבס לא נטענה — בדוק חיבור לאינטרנט ורענן את הדף");
+      dovErr("ספריית הקנבס לא נטענה — בדוק חי��ור לאינטרנט ורענן את הדף");
       statusEl.textContent = "⚠️ הקנבס לא נטען";
       return;
     }
@@ -437,8 +437,9 @@
   function applyChrome() {
     document.body.classList.toggle("noChrome", !chromeState.bar);
     var root = document.getElementById("canvasRoot");
-    root.querySelectorAll(".App-menu_top").forEach(function (el) { el.style.display = chromeState.top ? "" : "none"; });
-    root.querySelectorAll("footer, .App-toolbar--mobile, .layer-ui__wrapper__footer, .App-menu_bottom").forEach(function (el) { el.style.display = chromeState.bottom ? "" : "none"; });
+    // Excalidraw מחליף פריסה בחלון צר: במחשב הסרגל העליון הוא .App-menu_top, במובייל .App-top-bar
+    root.querySelectorAll(".App-top-bar, .App-menu_top, .App-toolbar--mobile").forEach(function (el) { el.style.display = chromeState.top ? "" : "none"; });
+    root.querySelectorAll(".App-bottom-bar, footer, .layer-ui__wrapper__footer, .App-menu_bottom").forEach(function (el) { el.style.display = chromeState.bottom ? "" : "none"; });
     document.getElementById("railBar").classList.toggle("on", chromeState.bar);
     document.getElementById("railTools").classList.toggle("on", chromeState.top);
     document.getElementById("railBottom").classList.toggle("on", chromeState.bottom);
