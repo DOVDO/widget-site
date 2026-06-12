@@ -643,8 +643,9 @@
   }
   function dovRangeStr(cr) {
     try {
-      const r = cr[0];
-      return dovColName(r.column[0]) + (r.row[0] + 1) + ":" + dovColName(r.column[1]) + (r.row[1] + 1);
+      return cr.map(function (r) {
+        return dovColName(r.column[0]) + (r.row[0] + 1) + ":" + dovColName(r.column[1]) + (r.row[1] + 1);
+      }).join(", ");
     } catch (e) { return "?"; }
   }
   function dovCondDesc(item) {
@@ -653,6 +654,15 @@
     if (n === "duplicateValue") return "ערך כפול";
     const v = (item.conditionValue || []).join(" ובין ");
     return (dovCondNames[n] || n) + " " + v;
+  }
+  function dovSelRanges() {
+    try {
+      const rng = luckysheet.getRange();
+      if (!rng || !rng.length) return null;
+      return rng.map(function (r) {
+        return { row: [r.row[0], r.row[1]], column: [r.column[0], r.column[1]] };
+      });
+    } catch (e) { return null; }
   }
   function dovGetCFList() {
     const s = luckysheet.getSheet();
@@ -664,7 +674,7 @@
     scheduleSave();
   }
   function openCondFormat() {
-    const rngNow = (function () { try { return luckysheet.getRange(); } catch (e) { return null; } })();
+    const selNow = dovSelRanges();
     dovModal("🚦 עיצוב לפי תנאים", (body) => {
       const labE = document.createElement("div");
       labE.className = "dovLabel";
@@ -696,6 +706,19 @@
           txt.style.flex = "1";
           txt.textContent = dovRangeStr(item.cellrange) + " — " + dovCondDesc(item);
           row.appendChild(txt);
+          const ed = document.createElement("button");
+          ed.textContent = "🎯";
+          ed.title = "עדכן את טווח התנאי לטווח(ים) שמסומנים כעת בגיליון";
+          ed.style.cssText = "border:1px solid #d3d1cb;background:#fff;border-radius:5px;cursor:pointer;padding:2px 7px";
+          ed.addEventListener("click", () => {
+            const ranges = selNow || dovSelRanges();
+            if (!ranges) { alert("סמן קודם טווח (או כמה טווחים) בגיליון, ואז פתח שוב את החלון"); return; }
+            item.cellrange = ranges;
+            dovCFRefresh();
+            renderList();
+            saveStatus.textContent = "הטווח עודכן ✓";
+          });
+          row.appendChild(ed);
           const del = document.createElement("button");
           del.textContent = "🗑️";
           del.title = "מחק תנאי זה";
@@ -755,8 +778,8 @@
       const go = document.createElement("button");
       go.textContent = "✅ הוסף תנאי על הטווח שסומן";
       go.addEventListener("click", () => {
-        const rng = rngNow || (function () { try { return luckysheet.getRange(); } catch (e) { return null; } })();
-        if (!rng || !rng[0]) { alert("סמן קודם טווח תאים בגיליון"); return; }
+        const ranges = selNow || dovSelRanges();
+        if (!ranges) { alert("סמן קודם טווח תאים בגיליון (אפשר גם כמה טווחים עם Ctrl)"); return; }
         const name = sel.value;
         let realName = name;
         let vals;
@@ -774,7 +797,7 @@
         }
         dovGetCFList().push({
           type: "default",
-          cellrange: [{ row: [rng[0].row[0], rng[0].row[1]], column: [rng[0].column[0], rng[0].column[1]] }],
+          cellrange: ranges,
           format: { textColor: tc.value, cellColor: cc.value },
           conditionName: realName,
           conditionRange: [],
@@ -788,7 +811,7 @@
       body.appendChild(row3);
       const tip = document.createElement("div");
       tip.className = "dovLabel";
-      tip.textContent = "טיפ: סמן את הטווח לפני פתיחת החלון. אפשר להוסיף כמה תנאים — כל אחד לטווח אחר.";
+      tip.textContent = "טיפ: סמן את הטווח לפני פתיחת החלון. אפשר לסמן כמה טווחים עם Ctrl (או Cmd במק), ולהרחיב טווח עם Shift. כל תנאי יכול לשבת על טווח אחר.";
       body.appendChild(tip);
     });
   }
@@ -941,6 +964,27 @@
     setTimeout(dovClampMenus, 60);
     setTimeout(dovClampMenus, 200);
   }
+  // במק המקש המקובל הוא Cmd, אבל המנוע מכיר רק Ctrl — ממפים Cmd+קליק ל-Ctrl+קליק
+  document.addEventListener("mousedown", function (e) {
+    if (e.metaKey && !e.ctrlKey && e.button === 0) {
+      const t = e.target;
+      if (t && t.closest && t.closest("#sheetRoot")) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        const ev = new MouseEvent("mousedown", {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: e.clientX,
+          clientY: e.clientY,
+          button: 0,
+          ctrlKey: true,
+          shiftKey: e.shiftKey,
+        });
+        t.dispatchEvent(ev);
+      }
+    }
+  }, true);
   document.addEventListener("click", dovClampSoon);
   document.addEventListener("mouseover", function (e) {
     if (e.target && e.target.closest && e.target.closest('div[id*="menu"], div[class*="menu"]')) dovClampSoon();
