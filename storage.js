@@ -100,6 +100,12 @@ function listDocs(folderId) {
     .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
 }
 
+// כל המסמכים מכל התיקיות, החדש ביותר ראשון (ללשונית "אחרונים")
+function listAllDocs() {
+  return loadStore().docs.slice()
+    .sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+}
+
 function moveDoc(id, folderId) {
   return updateDoc(id, { folderId: folderId || null });
 }

@@ -35,7 +35,7 @@
   .actions button.primary:hover { background: #1b6ec2; }
 
   main { flex: 1; }
-  .empty { color: #9b9a97; font-size: 13.5px; text-align: center; padding: 30px 0; }
+  .empty { color: #9b9a97; font-size: 13.5px; text-align: center; padding: 22px 0; }
 
   .row {
     display: flex; align-items: center; gap: 8px;
@@ -56,6 +56,41 @@
   .linked { color: #2383e2 !important; font-weight: 600; }
 
   footer { margin-top: 14px; font-size: 11px; color: #9b9a97; text-align: center; }
+
+  /* ===== מסך הבית ===== */
+  .hero { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0 18px; }
+  .bigBtn {
+    flex: 1 1 130px; max-width: 200px; min-height: 88px;
+    border: 1px solid #e9e9e7; border-radius: 10px; background: #fbfbfa;
+    font-family: inherit; font-size: 14px; font-weight: 600; color: #37352f;
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  }
+  .bigBtn .big { font-size: 26px; }
+  .bigBtn:hover { background: #f1f1ef; }
+  .bigBtn.alt { background: #fff; border-style: dashed; }
+
+  details#recentBox { border: 1px solid #e9e9e7; border-radius: 10px; padding: 8px 12px; }
+  details#recentBox summary {
+    cursor: pointer; font-size: 14px; font-weight: 600; padding: 4px 2px;
+    list-style: none; display: flex; align-items: center; gap: 7px;
+  }
+  details#recentBox summary::-webkit-details-marker { display: none; }
+  details#recentBox summary::before { content: "◀"; font-size: 10px; color: #9b9a97; transition: transform .15s; }
+  details#recentBox[open] summary::before { transform: rotate(-90deg); }
+  #recentList { margin-top: 8px; }
+
+  /* ===== דיאלוגים מותאמים (prompt/confirm חסומים בהטמעה של נושן) ===== */
+  .dlgOverlay { position: fixed; inset: 0; background: rgba(15,15,15,.45); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 14px; }
+  .dlgBox { background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.25); width: 100%; max-width: 380px; max-height: 75vh; overflow-y: auto; padding: 16px; }
+  .dlgBox h3 { font-size: 14.5px; margin-bottom: 10px; }
+  .dlgBox .msg { font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; margin-bottom: 12px; }
+  .dlgBox input[type="text"] { width: 100%; padding: 7px 8px; border: 1px solid #d3d3d0; border-radius: 6px; font-family: inherit; font-size: 13.5px; margin-bottom: 12px; }
+  .dlgRow { display: flex; gap: 8px; }
+  .dlgRow button { border: 1px solid #d3d3d0; background: #fff; border-radius: 6px; padding: 6px 14px; font-family: inherit; font-size: 13px; cursor: pointer; }
+  .dlgRow button.primary { background: #2383e2; border-color: #2383e2; color: #fff; }
+  .dlgRow button.danger { background: #e03e3e; border-color: #e03e3e; color: #fff; }
+
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #37352f; color: #fff; font-size: 13px; padding: 8px 16px; border-radius: 8px; z-index: 400; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90%; }
 
   /* חלון בחירת תיקייה (להעברת קובץ) */
   #moveOverlay {
@@ -82,18 +117,34 @@
   <span id="cloudStatus">ענן: לא מחובר</span>
 </div>
 
-  <header>
-    <div id="crumbs"></div>
-    <div class="actions">
-      <button id="newDocBtn" class="primary">➕ מסמך</button>
-      <button id="newSheetBtn" class="primary">➕ גיליון</button>
-      <button id="newFolderBtn">📁 תיקייה</button>
+  <!-- ===== מסך הבית ===== -->
+  <div id="homeView">
+    <div class="hero">
+      <button class="bigBtn" id="homeNewDoc"><span class="big">📝</span>מסמך חדש</button>
+      <button class="bigBtn" id="homeNewSheet"><span class="big">📊</span>גיליון חדש</button>
+      <button class="bigBtn alt" id="openExplorerBtn"><span class="big">🗂️</span>סייר הקבצים</button>
     </div>
-  </header>
+    <details id="recentBox" open>
+      <summary>🕘 אחרונים</summary>
+      <div id="recentList"></div>
+    </details>
+  </div>
 
-  <main id="list"></main>
+  <!-- ===== סייר הקבצים ===== -->
+  <div id="explorerView" style="display:none">
+    <header>
+      <div id="crumbs"></div>
+      <div class="actions">
+        <button id="homeBtn">🏠 בית</button>
+        <button id="newDocBtn" class="primary">➕ מסמך</button>
+        <button id="newSheetBtn" class="primary">➕ גיליון</button>
+        <button id="newFolderBtn">📁 תיקייה</button>
+      </div>
+    </header>
+    <main id="list"></main>
+  </div>
 
-  <footer>גרסה 0.20 — שמירה מקומית בדפדפן זה</footer>
+  <footer>גרסה 0.21</footer>
 
   <div id="moveOverlay">
     <div id="moveBox">
@@ -103,6 +154,8 @@
     </div>
   </div>
 
+  <div id="toast"></div>
+
 <script src="storage.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -110,6 +163,130 @@
 <script src="links-ui.js"></script>
 <script>
   let currentFolderId = null;
+
+  // ----- דיאלוגים מותאמים: prompt/confirm/alert חסומים בתוך הטמעה של נושן -----
+  function dovDlg() {
+    const ov = document.createElement("div");
+    ov.className = "dlgOverlay";
+    const box = document.createElement("div");
+    box.className = "dlgBox";
+    ov.appendChild(box);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(); });
+    document.body.appendChild(ov);
+    return { box: box, close: close };
+  }
+
+  function askText(title, initial, cb) {
+    const d = dovDlg();
+    const h = document.createElement("h3");
+    h.textContent = title;
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = initial || "";
+    const row = document.createElement("div");
+    row.className = "dlgRow";
+    const ok = document.createElement("button");
+    ok.className = "primary";
+    ok.textContent = "אישור";
+    const cancel = document.createElement("button");
+    cancel.textContent = "ביטול";
+    function submit() {
+      const v = inp.value.trim();
+      d.close();
+      if (v) cb(v);
+    }
+    ok.addEventListener("click", submit);
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    cancel.addEventListener("click", d.close);
+    row.appendChild(ok);
+    row.appendChild(cancel);
+    d.box.appendChild(h);
+    d.box.appendChild(inp);
+    d.box.appendChild(row);
+    inp.focus();
+    inp.select();
+  }
+
+  function askConfirm(msg, cb, danger) {
+    const d = dovDlg();
+    const m = document.createElement("div");
+    m.className = "msg";
+    m.textContent = msg;
+    const row = document.createElement("div");
+    row.className = "dlgRow";
+    const ok = document.createElement("button");
+    ok.className = danger ? "danger" : "primary";
+    ok.textContent = danger ? "מחק" : "אישור";
+    ok.addEventListener("click", () => { d.close(); cb(); });
+    const cancel = document.createElement("button");
+    cancel.textContent = "ביטול";
+    cancel.addEventListener("click", d.close);
+    row.appendChild(ok);
+    row.appendChild(cancel);
+    d.box.appendChild(m);
+    d.box.appendChild(row);
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.style.opacity = "1";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.style.opacity = "0"; }, 2200);
+  }
+
+  function showLinkModal(text) {
+    const d = dovDlg();
+    const h = document.createElement("h3");
+    h.textContent = "🔗 קישור לקובץ — העתק ידנית";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.readOnly = true;
+    inp.value = text;
+    inp.style.direction = "ltr";
+    inp.addEventListener("click", () => inp.select());
+    const row = document.createElement("div");
+    row.className = "dlgRow";
+    const cp = document.createElement("button");
+    cp.className = "primary";
+    cp.textContent = "העתק";
+    cp.addEventListener("click", () => {
+      inp.select();
+      try { document.execCommand("copy"); cp.textContent = "הועתק ✓"; } catch (e) {}
+    });
+    const closeB = document.createElement("button");
+    closeB.textContent = "סגור";
+    closeB.addEventListener("click", d.close);
+    row.appendChild(cp);
+    row.appendChild(closeB);
+    d.box.appendChild(h);
+    d.box.appendChild(inp);
+    d.box.appendChild(row);
+    inp.select();
+  }
+
+  function copyText(text) {
+    let ok = false;
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) {}
+    if (ok) { toast("הקישור הועתק ✓"); return; }
+    try {
+      navigator.clipboard.writeText(text).then(() => toast("הקישור הועתק ✓"), () => showLinkModal(text));
+    } catch (e) { showLinkModal(text); }
+  }
+
+  function docLink(d) {
+    return new URL((d.type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id), location.href).href;
+  }
 
   function fmtDate(iso) {
     try {
@@ -133,7 +310,7 @@
     crumbs.innerHTML = "";
     const path = folderPath(currentFolderId);
     const rootBtn = document.createElement("button");
-    rootBtn.textContent = "🏠 ראשי";
+    rootBtn.textContent = "🗂️ ראשי";
     if (!path.length) rootBtn.className = "cur";
     else rootBtn.addEventListener("click", () => { currentFolderId = null; render(); });
     crumbs.appendChild(rootBtn);
@@ -175,17 +352,19 @@
     renameBtn.title = "שינוי שם";
     renameBtn.textContent = "✏️";
     renameBtn.addEventListener("click", () => {
-      const newName = prompt("שם חדש לתיקייה:", f.name);
-      if (newName && newName.trim()) { renameFolder(f.id, newName.trim()); render(); }
+      askText("שם חדש לתיקייה:", f.name, (newName) => {
+        renameFolder(f.id, newName);
+        refreshAll();
+      });
     });
     const delBtn = document.createElement("button");
     delBtn.title = "מחיקה";
     delBtn.textContent = "🗑️";
     delBtn.addEventListener("click", () => {
-      if (confirm('למחוק את התיקייה "' + f.name + '"?\nהתוכן שלה לא יימחק — הוא יעבור לתיקייה שמעליה.')) {
+      askConfirm('למחוק את התיקייה "' + f.name + '"?\nהתוכן שלה לא יימחק — הוא יעבור לתיקייה שמעליה.', () => {
         deleteFolder(f.id);
-        render();
-      }
+        refreshAll();
+      }, true);
     });
     btns.appendChild(renameBtn);
     btns.appendChild(delBtn);
@@ -199,7 +378,7 @@
     location.href = (d.type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id);
   }
 
-  function docRow(d) {
+  function docRow(d, inRecents) {
     const row = document.createElement("div");
     row.className = "row";
     const icon = document.createElement("span");
@@ -213,7 +392,13 @@
     const meta = document.createElement("div");
     meta.className = "meta";
     const linkCount = (d.links || []).length;
-    meta.textContent = "עודכן: " + fmtDate(d.updated) + (linkCount ? " · 🔗 משובץ ב-" + linkCount + " מקומות" : "");
+    let metaText = "עודכן: " + fmtDate(d.updated);
+    if (inRecents && d.folderId) {
+      const folder = getFolder(d.folderId);
+      if (folder) metaText += " · 📁 " + folder.name;
+    }
+    if (linkCount) metaText += " · 🔗 משובץ ב-" + linkCount + " מקומות";
+    meta.textContent = metaText;
     main.appendChild(name);
     main.appendChild(meta);
     main.addEventListener("click", () => openDocPage(d));
@@ -224,7 +409,12 @@
     linksBtn.title = "היכן הקובץ משובץ בנושן";
     linksBtn.textContent = "🔗" + (linkCount ? linkCount : "");
     if (linkCount) linksBtn.className = "linked";
-    linksBtn.addEventListener("click", () => openLinksModal(d.id, render));
+    linksBtn.addEventListener("click", () => openLinksModal(d.id, refreshAll));
+
+    const copyBtn = document.createElement("button");
+    copyBtn.title = "העתק קישור לקובץ (להטמעה בנושן)";
+    copyBtn.textContent = "📋";
+    copyBtn.addEventListener("click", () => copyText(docLink(d)));
 
     const moveBtn = document.createElement("button");
     moveBtn.title = "העברה לתיקייה";
@@ -235,8 +425,10 @@
     renameBtn.title = "שינוי שם";
     renameBtn.textContent = "✏️";
     renameBtn.addEventListener("click", () => {
-      const newName = prompt("שם חדש לקובץ:", d.name);
-      if (newName && newName.trim()) { updateDoc(d.id, { name: newName.trim() }); render(); }
+      askText("שם חדש לקובץ:", d.name, (newName) => {
+        updateDoc(d.id, { name: newName });
+        refreshAll();
+      });
     });
 
     const delBtn = document.createElement("button");
@@ -250,13 +442,14 @@
           links.map((l) => "• " + (l.note || l.url)).join("\n") +
           "\n\nההטמעות האלו יפסיקו לעבוד!";
       }
-      if (confirm(msg)) {
+      askConfirm(msg, () => {
         deleteDoc(d.id);
-        render();
-      }
+        refreshAll();
+      }, true);
     });
 
     btns.appendChild(linksBtn);
+    btns.appendChild(copyBtn);
     btns.appendChild(moveBtn);
     btns.appendChild(renameBtn);
     btns.appendChild(delBtn);
@@ -280,7 +473,42 @@
       return;
     }
     folders.forEach((f) => listEl.appendChild(folderRow(f)));
-    docs.forEach((d) => listEl.appendChild(docRow(d)));
+    docs.forEach((d) => listEl.appendChild(docRow(d, false)));
+  }
+
+  function renderRecents() {
+    const el = document.getElementById("recentList");
+    el.innerHTML = "";
+    const docs = listAllDocs().slice(0, 8);
+    if (!docs.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "עוד אין קבצים — צור את הראשון מהכפתורים למעלה ⬆️";
+      el.appendChild(empty);
+      return;
+    }
+    docs.forEach((d) => el.appendChild(docRow(d, true)));
+  }
+
+  function refreshAll() {
+    render();
+    renderRecents();
+  }
+
+  // ----- מעבר בין מסך הבית לסייר -----
+  const homeView = document.getElementById("homeView");
+  const explorerView = document.getElementById("explorerView");
+
+  function showHome() {
+    homeView.style.display = "";
+    explorerView.style.display = "none";
+    renderRecents();
+  }
+
+  function showExplorer() {
+    homeView.style.display = "none";
+    explorerView.style.display = "";
+    render();
   }
 
   // ----- העברת קובץ לתיקייה -----
@@ -296,11 +524,11 @@
       btn.addEventListener("click", () => {
         moveDoc(docId, folderId);
         moveOverlay.style.display = "none";
-        render();
+        refreshAll();
       });
       moveOptions.appendChild(btn);
     }
-    addOption("🏠 ראשי", null, 0);
+    addOption("🗂️ ראשי", null, 0);
     function walk(parentId, depth) {
       listFolders(parentId).forEach((f) => {
         addOption("📁 " + f.name, f.id, depth);
@@ -314,21 +542,31 @@
   document.getElementById("moveCancel").addEventListener("click", () => { moveOverlay.style.display = "none"; });
   moveOverlay.addEventListener("mousedown", (e) => { if (e.target === moveOverlay) moveOverlay.style.display = "none"; });
 
-  // ----- כפתורי יצירה -----
-  document.getElementById("newDocBtn").addEventListener("click", () => {
-    const d = createDoc("markdown", currentFolderId);
-    location.href = "markdown.html?id=" + encodeURIComponent(d.id);
-  });
-  document.getElementById("newSheetBtn").addEventListener("click", () => {
-    const d = createDoc("sheet", currentFolderId);
-    location.href = "sheet.html?id=" + encodeURIComponent(d.id);
-  });
+  // ----- יצירת קבצים: דוחפים לענן לפני המעבר לדף העריכה -----
+  function createAndOpen(type) {
+    const d = createDoc(type, currentFolderId);
+    const go = () => { location.href = (type === "sheet" ? "sheet.html" : "markdown.html") + "?id=" + encodeURIComponent(d.id); };
+    if (window.dovCloud && dovCloud.isReady()) {
+      Promise.race([dovCloud.flush(), new Promise((r) => setTimeout(r, 1500))]).then(go, go);
+    } else {
+      go();
+    }
+  }
+
+  document.getElementById("homeNewDoc").addEventListener("click", () => { currentFolderId = null; createAndOpen("markdown"); });
+  document.getElementById("homeNewSheet").addEventListener("click", () => { currentFolderId = null; createAndOpen("sheet"); });
+  document.getElementById("openExplorerBtn").addEventListener("click", showExplorer);
+  document.getElementById("homeBtn").addEventListener("click", showHome);
+  document.getElementById("newDocBtn").addEventListener("click", () => createAndOpen("markdown"));
+  document.getElementById("newSheetBtn").addEventListener("click", () => createAndOpen("sheet"));
   document.getElementById("newFolderBtn").addEventListener("click", () => {
-    const name = prompt("שם התיקייה:");
-    if (name && name.trim()) { createFolder(name.trim(), currentFolderId); render(); }
+    askText("שם התיקייה:", "", (name) => {
+      createFolder(name, currentFolderId);
+      refreshAll();
+    });
   });
 
-  render();
+  showHome();
 
   // ===== חיבור לענן =====
   (function () {
@@ -337,7 +575,7 @@
     if (!window.dovCloud) { stEl.textContent = "ענן: הספרייה לא נטענה"; return; }
     dovCloud.bindStatus(stEl);
     function startPull() {
-      dovCloud.pullAll().then((changed) => { if (changed) render(); });
+      dovCloud.pullAll().then((changed) => { if (changed) refreshAll(); });
     }
     function mkBtn(text, primary) {
       const b = document.createElement("button");
@@ -380,12 +618,12 @@
         box.appendChild(sync);
         const out = mkBtn("⏏️ נתק מכשיר זה", false);
         out.addEventListener("click", () => {
-          if (confirm("לנתק את המכשיר הזה מהענן? הקבצים יישארו גם כאן וגם בענן.")) {
+          document.body.removeChild(ov);
+          askConfirm("לנתק את המכשיר הזה מהענן? הקבצים יישארו גם כאן וגם בענן.", () => {
             dovCloud.setSpaceId("");
-            document.body.removeChild(ov);
             stEl.textContent = "ענן: לא מחובר";
             stEl.style.color = "#787774";
-          }
+          });
         });
         box.appendChild(out);
       } else {
@@ -405,7 +643,7 @@
         join.style.margin = "0";
         join.addEventListener("click", () => {
           const v = joinIn.value.trim();
-          if (v.length < 16) { alert("המזהה קצר מדי — ודא שהעתקת את כולו"); return; }
+          if (v.length < 16) { toast("המזהה קצר מדי — ודא שהעתקת את כולו"); return; }
           dovCloud.setSpaceId(v);
           document.body.removeChild(ov);
           startPull();
