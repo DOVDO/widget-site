@@ -474,14 +474,57 @@
   }
 
   // ----- העתקת כתובת הדף הנוכחי -----
+  function dovShowUrlModal(url) {
+    dovModal("📋 העתקת כתובת הדף", (body) => {
+      const inp = document.createElement("input");
+      inp.value = url;
+      inp.readOnly = true;
+      inp.style.cssText = "width:100%;box-sizing:border-box;padding:6px;border:1px solid #d3d1cb;border-radius:5px;direction:ltr;font-size:12px";
+      inp.addEventListener("focus", () => inp.select());
+      inp.addEventListener("click", () => inp.select());
+      body.appendChild(inp);
+      const row = document.createElement("div");
+      row.className = "dovBtnRow";
+      const b = document.createElement("button");
+      b.textContent = "העתק";
+      b.addEventListener("click", () => {
+        inp.select();
+        let ok = false;
+        try { ok = document.execCommand("copy"); } catch (e) {}
+        b.textContent = ok ? "הועתק ✓" : "סמן והעתק ידנית (Ctrl+C)";
+      });
+      row.appendChild(b);
+      body.appendChild(row);
+      const tip = document.createElement("div");
+      tip.className = "dovLabel";
+      tip.textContent = "לחיצה על השדה מסמנת את הכל - ואז Ctrl+C (או לחיצה ארוכה והעתקה בנייד).";
+      body.appendChild(tip);
+      setTimeout(() => { try { inp.focus(); inp.select(); } catch (e) {} }, 60);
+    });
+  }
   function copyCurrentUrl() {
     const url = location.href;
-    function fallback() { prompt("העתק את הכתובת (Ctrl+C ואז Enter):", url); }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      ta.style.cssText = "position:fixed;top:-100px;left:0;opacity:0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (ok) { saveStatus.textContent = "הכתובת הועתקה ✓"; return; }
+    } catch (e) {}
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(() => { saveStatus.textContent = "הכתובת הועתקה ✓"; }, fallback);
-      } else { fallback(); }
-    } catch (e) { fallback(); }
+        navigator.clipboard.writeText(url).then(
+          () => { saveStatus.textContent = "הכתובת הועתקה ✓"; },
+          () => dovShowUrlModal(url)
+        );
+        return;
+      }
+    } catch (e) {}
+    dovShowUrlModal(url);
   }
 
   // ----- תפריט "הכלים שלי" בראש תפריט הקליק הימני -----
@@ -580,14 +623,99 @@
     } catch (e) {}
     alert("גבולות לא נתמכים ישירות כאן — פתח את התפריטים המלאים (הכלים שלי ← הצג תפריטים)");
   }
+  const dovCondNames = {
+    greaterThan: "גדול מ",
+    lessThan: "קטן מ",
+    equal: "שווה ל",
+    betweenness: "בין",
+    textContains: "מכיל",
+    duplicateValue: "ערך כפול",
+  };
+  function dovColName(i) {
+    let s = "";
+    i = i + 1;
+    while (i > 0) {
+      const m = (i - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      i = Math.floor((i - 1) / 26);
+    }
+    return s;
+  }
+  function dovRangeStr(cr) {
+    try {
+      const r = cr[0];
+      return dovColName(r.column[0]) + (r.row[0] + 1) + ":" + dovColName(r.column[1]) + (r.row[1] + 1);
+    } catch (e) { return "?"; }
+  }
+  function dovCondDesc(item) {
+    const n = item.conditionName;
+    if (n === "textContains" && (!item.conditionValue || item.conditionValue[0] === "")) return "לא ריק";
+    if (n === "duplicateValue") return "ערך כפול";
+    const v = (item.conditionValue || []).join(" ובין ");
+    return (dovCondNames[n] || n) + " " + v;
+  }
+  function dovGetCFList() {
+    const s = luckysheet.getSheet();
+    if (!s.luckysheet_conditionformat_save) s.luckysheet_conditionformat_save = [];
+    return s.luckysheet_conditionformat_save;
+  }
+  function dovCFRefresh() {
+    buildSheet(snapshot());
+    scheduleSave();
+  }
   function openCondFormat() {
-    dovModal("\ud83d\udea6 עיצוב לפי תנאים — על הטווח המסומן", (body) => {
+    const rngNow = (function () { try { return luckysheet.getRange(); } catch (e) { return null; } })();
+    dovModal("🚦 עיצוב לפי תנאים", (body) => {
+      const labE = document.createElement("div");
+      labE.className = "dovLabel";
+      labE.textContent = "תנאים קיימים בגיליון הנוכחי:";
+      body.appendChild(labE);
+      const list = document.createElement("div");
+      body.appendChild(list);
+      function renderList() {
+        list.innerHTML = "";
+        const cf = dovGetCFList();
+        if (!cf.length) {
+          const none = document.createElement("div");
+          none.className = "dovLabel";
+          none.textContent = "אין עדיין תנאים.";
+          list.appendChild(none);
+          return;
+        }
+        cf.forEach((item, idx) => {
+          const row = document.createElement("div");
+          row.className = "dovListItem";
+          row.style.display = "flex";
+          row.style.alignItems = "center";
+          row.style.gap = "8px";
+          row.style.cursor = "default";
+          const sw = document.createElement("span");
+          sw.style.cssText = "width:14px;height:14px;border-radius:3px;border:1px solid #d3d1cb;flex:none;background:" + ((item.format && item.format.cellColor) || "#fff");
+          row.appendChild(sw);
+          const txt = document.createElement("span");
+          txt.style.flex = "1";
+          txt.textContent = dovRangeStr(item.cellrange) + " — " + dovCondDesc(item);
+          row.appendChild(txt);
+          const del = document.createElement("button");
+          del.textContent = "🗑️";
+          del.title = "מחק תנאי זה";
+          del.style.cssText = "border:1px solid #d3d1cb;background:#fff;border-radius:5px;cursor:pointer;padding:2px 7px";
+          del.addEventListener("click", () => {
+            dovGetCFList().splice(idx, 1);
+            dovCFRefresh();
+            renderList();
+          });
+          row.appendChild(del);
+          list.appendChild(row);
+        });
+      }
+      renderList();
       const lab1 = document.createElement("div");
       lab1.className = "dovLabel";
-      lab1.textContent = "כשהערך בתא...";
+      lab1.textContent = "תנאי חדש — כשהערך בתא...";
       body.appendChild(lab1);
       const sel = document.createElement("select");
-      [["greaterThan", "גדול מ..."], ["lessThan", "קטן מ..."], ["equal", "שווה ל..."], ["betweenness", "בין... לבין..."], ["textContains", "מכיל את הטקסט..."], ["duplicateValue", "ערך כפול"]].forEach((o) => {
+      [["greaterThan", "גדול מ..."], ["lessThan", "קטן מ..."], ["equal", "שווה ל..."], ["betweenness", "בין... לבין..."], ["textContains", "מכיל את הטקסט..."], ["notEmpty", "לא ריק (יש ערך בתא)"], ["duplicateValue", "ערך כפול"]].forEach((o) => {
         const op = document.createElement("option");
         op.value = o[0];
         op.textContent = o[1];
@@ -625,33 +753,43 @@
       const row3 = document.createElement("div");
       row3.className = "dovBtnRow";
       const go = document.createElement("button");
-      go.textContent = "\u2705 החל על הטווח המסומן";
+      go.textContent = "✅ הוסף תנאי על הטווח שסומן";
       go.addEventListener("click", () => {
+        const rng = rngNow || (function () { try { return luckysheet.getRange(); } catch (e) { return null; } })();
+        if (!rng || !rng[0]) { alert("סמן קודם טווח תאים בגיליון"); return; }
         const name = sel.value;
-        const n1 = parseFloat(v1.value);
+        let realName = name;
         let vals;
-        if (name === "betweenness") vals = [v1.value, v2.value];
+        if (name === "notEmpty") { realName = "textContains"; vals = [""]; }
+        else if (name === "betweenness") {
+          const a = parseFloat(v1.value);
+          const b2 = parseFloat(v2.value);
+          vals = [isNaN(a) ? v1.value : a, isNaN(b2) ? v2.value : b2];
+        }
         else if (name === "duplicateValue") vals = [0];
         else if (name === "textContains") vals = [v1.value];
-        else vals = [isNaN(n1) ? v1.value : n1];
-        try {
-          luckysheet.setRangeConditionalFormatDefault(name, vals, { format: { textColor: tc.value, cellColor: cc.value } });
-          scheduleSave();
-          saveStatus.textContent = "התנאי הוחל \u2713";
-        } catch (e) { alert("לא הצלחתי להחיל — ודא שסימנת טווח ושהערך מתאים לתנאי");}
-      });
-      const clr = document.createElement("button");
-      clr.textContent = "\ud83d\uddd1\ufe0f מחק את כל התנאים בגיליון";
-      clr.addEventListener("click", () => {
-        for (let i = 0; i < 50; i++) {
-          try { luckysheet.deleteRangeConditionalFormat(0); } catch (e) { break; }
+        else {
+          const n1 = parseFloat(v1.value);
+          vals = [isNaN(n1) ? v1.value : n1];
         }
-        scheduleSave();
-        saveStatus.textContent = "התנאים נמחקו";
+        dovGetCFList().push({
+          type: "default",
+          cellrange: [{ row: [rng[0].row[0], rng[0].row[1]], column: [rng[0].column[0], rng[0].column[1]] }],
+          format: { textColor: tc.value, cellColor: cc.value },
+          conditionName: realName,
+          conditionRange: [],
+          conditionValue: vals,
+        });
+        dovCFRefresh();
+        renderList();
+        saveStatus.textContent = "התנאי נוסף ✓";
       });
       row3.appendChild(go);
-      row3.appendChild(clr);
       body.appendChild(row3);
+      const tip = document.createElement("div");
+      tip.className = "dovLabel";
+      tip.textContent = "טיפ: סמן את הטווח לפני פתיחת החלון. אפשר להוסיף כמה תנאים — כל אחד לטווח אחר.";
+      body.appendChild(tip);
     });
   }
 
@@ -764,6 +902,7 @@
     const vh = window.innerHeight;
     const els = document.querySelectorAll('div[id*="menu"], div[class*="menu"], div[id*="Menu"], div[class*="Menu"]');
     els.forEach((el) => {
+      if (el.style && el.style.display === "none") return;
       if (el.id === "dovExtraMenu") return;
       if (el.closest && el.closest(".dovOverlay")) return;
       const cs = window.getComputedStyle(el);
@@ -798,14 +937,14 @@
     dovClampPending = true;
     setTimeout(dovClampMenus, 30);
   }
-  try {
-    new MutationObserver(dovQueueClamp).observe(document.body, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      attributeFilter: ["style", "class"],
-    });
-  } catch (e) {}
+  function dovClampSoon() {
+    setTimeout(dovClampMenus, 60);
+    setTimeout(dovClampMenus, 200);
+  }
+  document.addEventListener("click", dovClampSoon);
+  document.addEventListener("mouseover", function (e) {
+    if (e.target && e.target.closest && e.target.closest('div[id*="menu"], div[class*="menu"]')) dovClampSoon();
+  });
   window.addEventListener("resize", dovQueueClamp);
   document.addEventListener("contextmenu", () => { setTimeout(dovClampMenus, 50); setTimeout(dovClampMenus, 150); });
 
@@ -853,7 +992,7 @@
     if (e.target && e.target.closest && e.target.closest("#luckysheet-scrollbar-x, #luckysheet-scrollbar-y, .luckysheet-scrollbar-x, .luckysheet-scrollbar-y")) return;
     e.preventDefault();
     const dy = e.deltaY;
-    if (dy) {
+    if (dy && Math.abs(dy) > Math.abs(e.deltaX || 0)) {
       const syEl = dovBars().sy;
       const before = syEl ? syEl.scrollTop : null;
       setTimeout(() => {
