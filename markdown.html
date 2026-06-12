@@ -115,6 +115,37 @@
     position: fixed; display: none; height: 3px; border-radius: 2px;
     background: #2383e2; z-index: 65; pointer-events: none;
   }
+
+  /* ===== גרסה 0.32: דף נקי ===== */
+  body.top-hidden .toastui-editor-defaultUI-toolbar { display: none !important; }
+  body.top-hidden .toastui-editor-defaultUI { border-top: none; }
+
+  /* נורית סנכרון */
+  #dovDot { position: fixed; bottom: 12px; inset-inline-end: 10px; width: 12px; height: 12px; border-radius: 50%; background: #9b9a97; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #d3d1cb; cursor: pointer; z-index: 80; }
+
+  /* תפריט קליק ימני */
+  #dovCtx { position: fixed; z-index: 9300; display: none; flex-direction: column; min-width: 215px; max-height: calc(100vh - 16px); overflow-y: auto; background: #fff; border: 1px solid #e9e9e7; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.16); padding: 4px; direction: rtl; scrollbar-width: thin; }
+  #dovCtx button { border: none; background: none; text-align: right; padding: 7px 10px; font-size: 13.5px; cursor: pointer; border-radius: 6px; color: #37352f; font-family: inherit; white-space: nowrap; }
+  #dovCtx button:hover { background: #f1f1ef; }
+  #dovCtx .sep { height: 1px; background: #e9e9e7; margin: 4px 6px; flex-shrink: 0; }
+
+  /* נעצים וצילום אזור */
+  #pinLayer { display: none; position: fixed; inset: 0; z-index: 9000; cursor: crosshair; background: rgba(11,110,153,.05); }
+  .dovPinMark { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #0b6e99; box-shadow: 0 0 0 3px rgba(11,110,153,.25); }
+  #pinHint { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); background: #0b6e99; color: #fff; border-radius: 6px; padding: 5px 12px; font-size: 12.5px; white-space: nowrap; max-width: 94vw; overflow: hidden; text-overflow: ellipsis; }
+  #pinRect { position: absolute; pointer-events: none; border: 2px dashed #0b6e99; background: rgba(11,110,153,.06); box-shadow: 0 0 0 100000px rgba(15,15,15,.28); }
+  .pinHandle { position: absolute; pointer-events: auto; touch-action: none; width: 14px; height: 14px; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; }
+  .pinMove { position: absolute; pointer-events: auto; touch-action: none; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid #0b6e99; border-radius: 50%; cursor: move; font-size: 16px; color: #0b6e99; box-shadow: 0 2px 8px rgba(0,0,0,.25); user-select: none; }
+  #pinBar { position: absolute; pointer-events: auto; display: flex; gap: 6px; align-items: center; background: #fff; border: 1px solid #d3d1cb; border-radius: 8px; padding: 5px 8px; box-shadow: 0 2px 10px rgba(0,0,0,.2); font-size: 12.5px; white-space: nowrap; }
+  #pinBar button { border: 1px solid #d3d1cb; background: #fff; border-radius: 6px; padding: 3px 9px; cursor: pointer; font-size: 12.5px; }
+  #pinBar button.primary { background: #0b6e99; color: #fff; border-color: #0b6e99; }
+
+  /* חלונית כללית + הודעות */
+  .dovOverlay { position: fixed; inset: 0; background: rgba(15,15,15,.45); z-index: 99000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .dovBox { background: #fff; border-radius: 10px; box-shadow: 0 10px 36px rgba(0,0,0,.25); padding: 16px; width: 100%; max-width: 460px; max-height: 86vh; overflow: auto; direction: rtl; }
+  .dovBox h3 { margin: 0 0 10px; font-size: 15px; }
+  .dovBox .hint { font-size: 12px; color: #787774; margin-top: 8px; }
+  #dovToast { position: fixed; bottom: 48px; left: 50%; transform: translateX(-50%); background: #37352f; color: #fff; border-radius: 8px; padding: 8px 14px; font-size: 13px; z-index: 99500; display: none; max-width: 90vw; }
 </style>
 </head>
 <body class="mode-view">
@@ -146,6 +177,10 @@
   </div>
   <div id="slashMenu"></div>
   <div id="dropLine"></div>
+  <div id="dovCtx"></div>
+  <div id="pinLayer"></div>
+  <div id="dovDot" title="מצב סנכרון"></div>
+  <div id="dovToast"></div>
 
 <script src="storage.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -353,7 +388,11 @@
 
   function setToolbarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
-    try { localStorage.setItem("dov-widgets-toolbar-hidden", hidden ? "1" : "0"); } catch (e) {}
+    try { localStorage.setItem("dov-md-bottom", hidden ? "1" : "0"); } catch (e) {}
+  }
+  function setTopHidden(hidden) {
+    document.body.classList.toggle("top-hidden", hidden);
+    try { localStorage.setItem("dov-md-top", hidden ? "1" : "0"); } catch (e) {}
   }
   document.getElementById("hideBtn").addEventListener("click", () => setToolbarHidden(true));
   document.getElementById("showBtn").addEventListener("click", () => setToolbarHidden(false));
@@ -592,11 +631,347 @@
   if (savedMode !== "view" && savedMode !== "edit" && savedMode !== "source") savedMode = null;
   setMode(savedMode || ((doc.content || "").trim() ? "view" : "edit"));
 
-  try {
-    if (localStorage.getItem("dov-widgets-toolbar-hidden") === "1") setToolbarHidden(true);
-  } catch (e) {}
+  // ברירת מחדל: דף נקי לגמרי — שני הסרגלים מוסתרים (קליק ימני מחזיר אותם)
+  let mdBottom = null, mdTop = null;
+  try { mdBottom = localStorage.getItem("dov-md-bottom"); mdTop = localStorage.getItem("dov-md-top"); } catch (e) {}
+  setToolbarHidden(mdBottom !== "0");
+  setTopHidden(mdTop !== "0");
 
   document.getElementById("linksBtn").addEventListener("click", () => openLinksModal(docId));
+
+  // =====================================================
+  // 3) גרסה 0.32 — דף נקי: קליק ימני, נורית סנכרון,
+  //    צילום מסמך/אזור והעתקה עם עיצוב
+  // =====================================================
+
+  function dovToast(msg) {
+    const t = document.getElementById("dovToast");
+    t.textContent = msg;
+    t.style.display = "block";
+    clearTimeout(t._tm);
+    t._tm = setTimeout(() => { t.style.display = "none"; }, 3200);
+  }
+
+  function dovModal(titleText, buildFn) {
+    const ov = document.createElement("div");
+    ov.className = "dovOverlay";
+    const box = document.createElement("div");
+    box.className = "dovBox";
+    const h = document.createElement("h3");
+    h.textContent = titleText;
+    box.appendChild(h);
+    ov.appendChild(box);
+    function close() { try { document.body.removeChild(ov); } catch (e) {} }
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(); });
+    buildFn(box, close);
+    document.body.appendChild(ov);
+    return close;
+  }
+
+  function mdSafeName() {
+    return (getDoc(docId).name || "note").replace(/[\\/:*?"<>|]/g, "-");
+  }
+
+  // ===== נורית סנכרון — במקום טקסט "מסונכרן בענן" =====
+  const dovDot = document.getElementById("dovDot");
+  function dovStatusColor(t) {
+    if (!t) return "#9b9a97";
+    if (t.indexOf("שגיאה") >= 0 || t.indexOf("⚠️") >= 0) return "#e03e3e";
+    if (t.indexOf("מסנכרן") >= 0 || t.indexOf("שומר") >= 0 || t.indexOf("טוען") >= 0) return "#b97a2a";
+    if (t.indexOf("מסונכרן") >= 0 || t.indexOf("נשמר") >= 0) return "#2f9e44";
+    return "#9b9a97";
+  }
+  function dovUpdateDot() {
+    const t = saveStatus.textContent || "";
+    dovDot.style.background = dovStatusColor(t);
+    dovDot.title = t || "מצב סנכרון";
+  }
+  new MutationObserver(dovUpdateDot).observe(saveStatus, { childList: true, characterData: true, subtree: true });
+  dovUpdateDot();
+  dovDot.addEventListener("click", () => dovToast(saveStatus.textContent || "עדיין לא היה סנכרון"));
+
+  // ===== העתקת כל המסמך כולל העיצוב =====
+  function copyDocRich() {
+    let html = "";
+    try { html = editor.getHTML(); } catch (e) {}
+    if (!html || !html.trim()) { dovToast("המסמך ריק — אין מה להעתיק"); return; }
+    const stage = document.createElement("div");
+    stage.contentEditable = "true";
+    stage.style.cssText = "position:fixed;left:0;top:0;opacity:0;pointer-events:none;z-index:0;background:#fff;";
+    stage.innerHTML = html;
+    document.body.appendChild(stage);
+    let ok = false;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(stage);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      ok = document.execCommand("copy");
+      sel.removeAllRanges();
+    } catch (e) {}
+    document.body.removeChild(stage);
+    if (ok) dovToast("המסמך הועתק עם העיצוב ✓ — הדבק בנושן עם Ctrl+V");
+    else dovToast("⚠️ ההעתקה נחסמה — סמן את הטקסט והעתק ידנית");
+  }
+
+  // ===== צילום מסמך / אזור (html2canvas נטען רק בעת הצורך) =====
+  let h2cPromise = null;
+  function ensureH2C() {
+    if (window.html2canvas) return Promise.resolve();
+    if (h2cPromise) return h2cPromise;
+    h2cPromise = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+      s.onload = res;
+      s.onerror = () => {
+        const s2 = document.createElement("script");
+        s2.src = "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js";
+        s2.onload = res;
+        s2.onerror = rej;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s);
+    });
+    return h2cPromise;
+  }
+
+  function showShotModal(canvas) {
+    let data = "";
+    try { data = canvas.toDataURL("image/png"); } catch (e) {}
+    if (!data) { dovToast("⚠️ הצילום נכשל"); return; }
+    dovModal("📷 צילום המסמך", (box) => {
+      const cap = document.createElement("div");
+      cap.style.cssText = "background:#e7f3f8;border:1px solid #0b6e99;color:#0b6e99;border-radius:6px;padding:6px 10px;font-size:12.5px;margin-bottom:8px;";
+      cap.textContent = "🖱 קליק ימני על התמונה ← \"העתקת תמונה\" — הדרך שתמיד עובדת";
+      box.appendChild(cap);
+      const img = document.createElement("img");
+      img.src = data;
+      img.style.cssText = "max-width:100%;border:1px solid #e1e1e1;border-radius:4px;";
+      box.appendChild(img);
+      const a = document.createElement("a");
+      a.href = data;
+      a.download = mdSafeName() + ".png";
+      a.textContent = "⬇️ הורדת התמונה כקובץ PNG";
+      a.style.cssText = "display:inline-block;margin-top:10px;font-size:13px;color:#0b6e99;";
+      box.appendChild(a);
+      const tip = document.createElement("div");
+      tip.className = "hint";
+      tip.textContent = "אפשר גם לגרור את התמונה ישירות לדף נושן.";
+      box.appendChild(tip);
+    });
+  }
+
+  function shotFull() {
+    const target = currentMode === "view" ? viewerRootEl : (getProseMirror() || document.body);
+    dovToast("מצלם את כל המסמך… ⏳");
+    ensureH2C().then(() => window.html2canvas(target, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      height: target.scrollHeight,
+      windowHeight: target.scrollHeight + 200,
+      onclone: (cd) => {
+        const list = cd.querySelectorAll("#viewerRoot, .ProseMirror");
+        for (let i = 0; i < list.length; i++) {
+          list[i].style.height = "auto";
+          list[i].style.overflow = "visible";
+        }
+      },
+    })).then(showShotModal).catch(() => dovToast("⚠️ הצילום נכשל — בדוק את החיבור לאינטרנט"));
+  }
+
+  function shotRegion(r) {
+    dovToast("מצלם את האזור… ⏳");
+    ensureH2C().then(() => window.html2canvas(document.body, {
+      backgroundColor: "#ffffff", scale: 2, x: r.x, y: r.y, width: r.w, height: r.h,
+    })).then(showShotModal).catch(() => dovToast("⚠️ הצילום נכשל — בדוק את החיבור לאינטרנט"));
+  }
+
+  // ===== נעצים: מסגרת מתכווננת — המסמך נשאר חופשי לגלילה =====
+  const pinLayer = document.getElementById("pinLayer");
+  let pinPts = [];
+  let pinBox = null;
+  let pinRectEl = null;
+  let pinBarEl = null;
+
+  function pinReset() {
+    pinPts = []; pinBox = null; pinRectEl = null; pinBarEl = null;
+    pinLayer.style.display = "none";
+    pinLayer.style.pointerEvents = "";
+    pinLayer.style.background = "";
+    pinLayer.style.cursor = "";
+    pinLayer.innerHTML = "";
+  }
+
+  function startPins() {
+    pinReset();
+    pinLayer.style.display = "block";
+    pinLayer.innerHTML = "<div id='pinHint'>📌 לחץ על 2 פינות של האזור — אחרי שתיווצר מסגרת, המסמך חופשי לגלילה</div>";
+  }
+
+  pinLayer.addEventListener("click", (e) => {
+    if (pinBox) return;
+    const m = document.createElement("div");
+    m.className = "dovPinMark";
+    m.style.left = e.clientX + "px";
+    m.style.top = e.clientY + "px";
+    pinLayer.appendChild(m);
+    pinPts.push({ x: e.clientX, y: e.clientY });
+    if (pinPts.length === 2) buildPinRect();
+  });
+
+  function drawPinRect() {
+    pinRectEl.style.left = pinBox.x + "px";
+    pinRectEl.style.top = pinBox.y + "px";
+    pinRectEl.style.width = pinBox.w + "px";
+    pinRectEl.style.height = pinBox.h + "px";
+    pinBarEl.style.top = (pinBox.y > 44 ? -40 : pinBox.h + 10) + "px";
+    pinBarEl.style.left = "0px";
+  }
+
+  function buildPinRect() {
+    pinBox = {
+      x: Math.min(pinPts[0].x, pinPts[1].x),
+      y: Math.min(pinPts[0].y, pinPts[1].y),
+      w: Math.max(Math.abs(pinPts[0].x - pinPts[1].x), 24),
+      h: Math.max(Math.abs(pinPts[0].y - pinPts[1].y), 24),
+    };
+    pinLayer.innerHTML = "";
+    pinRectEl = document.createElement("div");
+    pinRectEl.id = "pinRect";
+    ["nw", "ne", "sw", "se"].forEach((c) => {
+      const hd = document.createElement("div");
+      hd.className = "pinHandle";
+      hd.dataset.c = c;
+      hd.style.cursor = (c === "nw" || c === "se") ? "nwse-resize" : "nesw-resize";
+      if (c.indexOf("w") >= 0) hd.style.left = "-9px"; else hd.style.right = "-9px";
+      if (c.indexOf("n") >= 0) hd.style.top = "-9px"; else hd.style.bottom = "-9px";
+      pinRectEl.appendChild(hd);
+    });
+    const grip = document.createElement("div");
+    grip.className = "pinMove";
+    grip.textContent = "✥";
+    grip.title = "גרירת המסגרת — רק מכאן";
+    pinRectEl.appendChild(grip);
+    pinBarEl = document.createElement("div");
+    pinBarEl.id = "pinBar";
+    const shoot = document.createElement("button");
+    shoot.className = "primary";
+    shoot.textContent = "📸 צלם";
+    shoot.addEventListener("click", () => {
+      const r = { x: pinBox.x, y: pinBox.y, w: pinBox.w, h: pinBox.h };
+      pinReset();
+      setTimeout(() => shotRegion(r), 80); // נותנים לכהות להיעלם לפני הצילום
+    });
+    const cancel = document.createElement("button");
+    cancel.textContent = "✖";
+    cancel.addEventListener("click", pinReset);
+    pinBarEl.appendChild(shoot);
+    pinBarEl.appendChild(cancel);
+    pinRectEl.appendChild(pinBarEl);
+    pinLayer.appendChild(pinRectEl);
+    // שחרור השכבה — המסמך חופשי לגלילה; רק הידיות חיות
+    pinLayer.style.pointerEvents = "none";
+    pinLayer.style.background = "transparent";
+    pinLayer.style.cursor = "default";
+    drawPinRect();
+    initPinDrag();
+  }
+
+  function initPinDrag() {
+    pinRectEl.addEventListener("pointerdown", (e) => {
+      const t = e.target;
+      const mode = t.classList.contains("pinHandle") ? t.dataset.c : t.classList.contains("pinMove") ? "move" : null;
+      if (!mode) return;
+      e.preventDefault();
+      e.stopPropagation();
+      try { t.setPointerCapture(e.pointerId); } catch (err) {}
+      const sx = e.clientX, sy = e.clientY;
+      const o = { x: pinBox.x, y: pinBox.y, w: pinBox.w, h: pinBox.h };
+      const mv = (ev) => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (mode === "move") {
+          pinBox.x = o.x + dx;
+          pinBox.y = o.y + dy;
+        } else {
+          if (mode.indexOf("w") >= 0) { pinBox.x = Math.min(o.x + dx, o.x + o.w - 24); pinBox.w = Math.max(o.w - dx, 24); }
+          if (mode.indexOf("e") >= 0) { pinBox.w = Math.max(o.w + dx, 24); }
+          if (mode.indexOf("n") >= 0) { pinBox.y = Math.min(o.y + dy, o.y + o.h - 24); pinBox.h = Math.max(o.h - dy, 24); }
+          if (mode.indexOf("s") >= 0) { pinBox.h = Math.max(o.h + dy, 24); }
+        }
+        drawPinRect();
+      };
+      const up = () => {
+        t.removeEventListener("pointermove", mv);
+        t.removeEventListener("pointerup", up);
+      };
+      t.addEventListener("pointermove", mv);
+      t.addEventListener("pointerup", up);
+    });
+  }
+
+  // ===== תפריט קליק ימני — הגישה לכל האפשרויות =====
+  const dovCtx = document.getElementById("dovCtx");
+  function hideCtx() { dovCtx.style.display = "none"; }
+
+  function ctxBtn(label, fn) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.addEventListener("click", () => { hideCtx(); fn(); });
+    dovCtx.appendChild(b);
+  }
+  function ctxSep() {
+    const s = document.createElement("div");
+    s.className = "sep";
+    dovCtx.appendChild(s);
+  }
+
+  function buildCtx() {
+    dovCtx.innerHTML = "";
+    const mark = (m) => (currentMode === m ? "✓ " : "");
+    ctxBtn(mark("view") + "👁️ מצב צפייה", () => setMode("view"));
+    ctxBtn(mark("edit") + "✏️ מצב עריכה", () => { setMode("edit"); editor.focus(); });
+    ctxBtn(mark("source") + "⌨️ עריכת מקור (Markdown)", () => { setMode("source"); editor.focus(); });
+    ctxSep();
+    const topHidden = document.body.classList.contains("top-hidden");
+    const botHidden = document.body.classList.contains("toolbar-hidden");
+    ctxBtn(topHidden ? "🧰 הצגת סרגל העיצוב העליון" : "🧰 הסתרת סרגל העיצוב העליון", () => setTopHidden(!topHidden));
+    ctxBtn(botHidden ? "🎛️ הצגת הסרגל התחתון" : "🎛️ הסתרת הסרגל התחתון", () => setToolbarHidden(!botHidden));
+    ctxSep();
+    ctxBtn("📋 העתקת כל המסמך (עם העיצוב)", copyDocRich);
+    ctxBtn("📷 צילום כל המסמך", shotFull);
+    ctxBtn("📌 צילום אזור בין 2 נעצים", startPins);
+    ctxBtn("⬇️ הורדת קובץ .md", () => document.getElementById("downloadBtn").click());
+    ctxSep();
+    ctxBtn("🔗 היכן המסמך משובץ בנושן", () => openLinksModal(docId));
+    ctxBtn("🏠 כל המסמכים", () => { location.href = "index.html"; });
+  }
+
+  document.addEventListener("contextmenu", (e) => {
+    const t = e.target;
+    if (t.closest) {
+      if (t.closest(".dovOverlay")) return; // בחלון הצילום — תפריט הדפדפן המקורי להעתקת תמונה
+      if (t.closest("#dovCtx")) { e.preventDefault(); return; }
+      if (currentMode === "edit" && t.closest(".ProseMirror table")) return; // תפריט הטבלאות המובנה של העורך
+    }
+    e.preventDefault();
+    buildCtx();
+    dovCtx.style.display = "flex";
+    dovCtx.style.visibility = "hidden";
+    dovCtx.style.top = "0px";
+    dovCtx.style.left = "0px";
+    const w = dovCtx.offsetWidth, h = dovCtx.offsetHeight;
+    let left = e.clientX - w; // נפתח לשמאל הסמן — נוח בעברית
+    if (left < 4) left = Math.min(e.clientX, window.innerWidth - w - 4);
+    let top = e.clientY;
+    if (top + h > window.innerHeight - 4) top = Math.max(window.innerHeight - h - 4, 4);
+    dovCtx.style.top = top + "px";
+    dovCtx.style.left = Math.max(left, 4) + "px";
+    dovCtx.style.visibility = "visible";
+  });
+
+  document.addEventListener("mousedown", (e) => { if (!dovCtx.contains(e.target)) hideCtx(); });
+  document.addEventListener("scroll", hideCtx, true);
 
   // ===== סנכרון ענן של הקובץ הנוכחי =====
   (function () {
