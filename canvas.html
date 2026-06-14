@@ -107,6 +107,8 @@
   <button id="railSync" title="רענון וסנכרון מהענן">🔄</button>
   <button id="railList" title="כל האובייקטים בקנבס — קפיצה מהירה">🧭</button>
   <button id="railStyle" title="עיצוב האובייקט המסומן — צבעים, קו, מילוי ועוד">🎨</button>
+  <button id="railEmbed" title="הטמעת מסמך / גיליון / קנבס בתוך הקנבס — או יצירת חדש">➕</button>
+  <button id="railFocus" title="מצב מיקוד על הטמעה — נעילה, זום קירוב, זום מקסימלי">🎯</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
 <div id="pinLayer"></div>
@@ -136,7 +138,12 @@
     el.style.display = "block";
     setTimeout(function () { el.style.display = "none"; }, 12000);
   }
-  window.addEventListener("error", function (e) { dovErr(e.message || "שגיאה לא ידועה"); });
+  window.addEventListener("error", function (e) {
+    var m = (e && e.message) || "";
+    // שגיאות חוצות-מקור מהטמעות (סקריפטים מ-CDN בתוך iframe) מגיעות כ-"Script error." בלי פרטים — רעש, מתעלמים
+    if (!m || m.toLowerCase().indexOf("script error") >= 0) return;
+    dovErr(m);
+  });
 
   function toast(msg) {
     var t = document.getElementById("toast");
@@ -250,6 +257,7 @@
       },
       langCode: "he-IL",
       validateEmbeddable: true,
+      renderEmbeddable: dovRenderEmbeddable,
       onChange: function () { scheduleSave(); },
       UIOptions: { canvasActions: { loadScene: false } }
     };
@@ -287,6 +295,232 @@
     document.body.appendChild(ov);
     return close;
   }
+
+  // ===== הטמעת ווידג'טים בתוך הקנבס + מצב מיקוד =====
+  // מזהה אם קישור מצביע לאחד הווידג'טים שלנו (אותו מקור) — רק אלה מקבלים iframe עם הרשאות מלאות
+  function isOwnWidget(link) {
+    try {
+      var u = new URL(link, location.href);
+      if (u.origin !== location.origin) return false;
+      var p = u.pathname;
+      return p.indexOf("sheet.html") >= 0 || p.indexOf("markdown.html") >= 0 || p.indexOf("canvas.html") >= 0;
+    } catch (e) { return false; }
+  }
+  function widgetPage(type) {
+    return type === "sheet" ? "sheet.html" : type === "canvas" ? "canvas.html" : "markdown.html";
+  }
+  function widgetIcon(type) {
+    return type === "sheet" ? "📊" : type === "canvas" ? "🎨" : "📝";
+  }
+  // בונה כתובת מלאה לווידג'ט, כולל מזהה מרחב (כדי שההטמעה תתחבר לענן)
+  function buildDocUrl(type, id) {
+    var path = location.pathname;
+    var base = location.origin + path.slice(0, path.lastIndexOf("/") + 1);
+    var url = base + widgetPage(type) + "?id=" + encodeURIComponent(id) + "&embed=1";
+    try { if (window.dovCloud && dovCloud.spaceId()) url += "&space=" + encodeURIComponent(dovCloud.spaceId()); } catch (e) {}
+    return url;
+  }
+  // מפענח קישור הטמעה חזרה לפרטי הקובץ
+  function parseEmbed(link) {
+    try {
+      var u = new URL(link, location.href);
+      var id = u.searchParams.get("id");
+      var p = u.pathname;
+      var type = p.indexOf("sheet.html") >= 0 ? "sheet" : p.indexOf("canvas.html") >= 0 ? "canvas" : "markdown";
+      var rec = id ? getDoc(id) : null;
+      return { id: id, type: type, name: rec ? rec.name : (id || "הטמעה") };
+    } catch (e) { return { id: null, type: "markdown", name: link }; }
+  }
+  // יצירת אלמנט embeddable — קודם דרך ה-API הרשמי, ובגיבוי בנייה ידנית
+  function makeEmbeddable(x, y, w, h, link) {
+    try {
+      var conv = ExcalidrawLib.convertToExcalidrawElements([{ type: "embeddable", x: x, y: y, width: w, height: h, link: link }]);
+      if (conv && conv.length && conv[0].type === "embeddable") return conv;
+    } catch (e) {}
+    function rint() { return Math.floor(Math.random() * 2147483647); }
+    return [{
+      id: "emb-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+      type: "embeddable", x: x, y: y, width: w, height: h, angle: 0,
+      strokeColor: "#1e1e1e", backgroundColor: "transparent", fillStyle: "solid",
+      strokeWidth: 2, strokeStyle: "solid", roughness: 1, opacity: 100,
+      groupIds: [], frameId: null, roundness: null, seed: rint(),
+      version: 1, versionNonce: rint(), isDeleted: false, boundElements: null,
+      updated: Date.now(), link: link, locked: false
+    }];
+  }
+  function embedDoc(type, id) {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    try {
+      var url = buildDocUrl(type, id);
+      var as = api.getAppState();
+      var z = (as.zoom && as.zoom.value) || 1;
+      var w = 760, h = 520;
+      var cx = -as.scrollX + (as.width / 2) / z - w / 2;
+      var cy = -as.scrollY + (as.height / 2) / z - h / 2;
+      var els = makeEmbeddable(cx, cy, w, h, url);
+      api.updateScene({ elements: api.getSceneElements().concat(els) });
+      scheduleSave();
+      toast("✓ ההטמעה נוספה — לחיצה כפולה כדי לעבוד בתוכה, או 🎯 למיקוד");
+    } catch (e) { dovErr("הוספת הטמעה נכשלה: " + e.message); }
+  }
+  // ה-renderer שלנו ל-iframe: מעניק allow-same-origin (שExcalidraw חוסם בהטמעות) — וכך הווידג'ט באמת עובד
+  function dovRenderEmbeddable(element) {
+    try {
+      var link = element && element.link || "";
+      if (link && isOwnWidget(link)) {
+        return React.createElement("iframe", {
+          src: link, title: "הטמעה",
+          style: { width: "100%", height: "100%", border: "0", borderRadius: "4px", background: "#fff" },
+          allow: "clipboard-read; clipboard-write; fullscreen",
+          sandbox: "allow-scripts allow-same-origin allow-popups allow-forms allow-modals allow-downloads allow-popups-to-escape-sandbox"
+        });
+      }
+    } catch (e) {}
+    return null;
+  }
+  function listEmbeds() {
+    if (!api) return [];
+    return api.getSceneElements().filter(function (el) { return el.type === "embeddable" && !el.isDeleted; });
+  }
+  // ===== חלונית: הוספת / יצירת הטמעה =====
+  function openEmbedModal() {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    dovModal("➕ הטמעת קובץ בקנבס", function (box, close) {
+      var h1 = document.createElement("div");
+      h1.className = "hint";
+      h1.style.cssText = "margin:0 0 6px;font-weight:600;color:#37352f;";
+      h1.textContent = "צור חדש והטמע מיד:";
+      box.appendChild(h1);
+      var r = document.createElement("div");
+      r.className = "btnRow";
+      [["markdown", "📝 מסמך"], ["sheet", "📊 גיליון"], ["canvas", "🎨 קנבס"]].forEach(function (t) {
+        var b = document.createElement("button");
+        b.className = "primary";
+        b.textContent = t[1];
+        b.addEventListener("click", function () { var d = createDoc(t[0], null); embedDoc(t[0], d.id); close(); });
+        r.appendChild(b);
+      });
+      box.appendChild(r);
+      var h2 = document.createElement("div");
+      h2.className = "hint";
+      h2.style.cssText = "margin:14px 0 6px;font-weight:600;color:#37352f;";
+      h2.textContent = "או הטמע קובץ קיים:";
+      box.appendChild(h2);
+      var search = document.createElement("input");
+      search.type = "text";
+      search.placeholder = "חיפוש לפי שם…";
+      search.style.cssText = "width:100%;box-sizing:border-box;margin-bottom:6px;";
+      box.appendChild(search);
+      var list = document.createElement("div");
+      list.style.cssText = "max-height:42vh;overflow:auto;display:flex;flex-direction:column;gap:4px;";
+      box.appendChild(list);
+      function render() {
+        var q = search.value.trim().toLowerCase();
+        var docs = listAllDocs().filter(function (d) { return d.id !== docId && (!q || (d.name || "").toLowerCase().indexOf(q) >= 0); });
+        list.innerHTML = "";
+        if (!docs.length) {
+          var e = document.createElement("div");
+          e.className = "hint";
+          e.textContent = "אין קבצים תואמים.";
+          list.appendChild(e);
+        }
+        docs.slice(0, 60).forEach(function (d) {
+          var b = document.createElement("button");
+          b.className = "dovListItem";
+          b.textContent = widgetIcon(d.type) + " " + (d.name || "ללא שם");
+          b.addEventListener("click", function () { embedDoc(d.type, d.id); close(); });
+          list.appendChild(b);
+        });
+      }
+      search.addEventListener("input", render);
+      render();
+    });
+  }
+  // ===== מצב מיקוד =====
+  function openFocus(link, name) {
+    var ov = document.createElement("div");
+    ov.id = "focusOverlay";
+    ov.style.cssText = "position:fixed;inset:0;z-index:99500;background:#fff;display:flex;flex-direction:column;";
+    var bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #e3e2de;background:#fafafa;flex:none;";
+    var ttl = document.createElement("div");
+    ttl.style.cssText = "font-weight:600;font-size:14px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    ttl.textContent = "🔒 " + (name || "מיקוד");
+    var x = document.createElement("button");
+    x.textContent = "✕ יציאה ממיקוד";
+    x.style.cssText = "border:1px solid #d3d1cb;background:#fff;border-radius:6px;cursor:pointer;padding:6px 12px;font-size:13px;font-family:inherit;";
+    function close() { try { document.removeEventListener("keydown", onKey); } catch (e) {} if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    function onKey(e) { if (e.key === "Escape") close(); }
+    x.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    var frame = document.createElement("iframe");
+    frame.src = link;
+    frame.style.cssText = "flex:1;border:0;width:100%;min-height:0;";
+    frame.setAttribute("allow", "clipboard-read; clipboard-write; fullscreen");
+    bar.appendChild(ttl);
+    bar.appendChild(x);
+    ov.appendChild(bar);
+    ov.appendChild(frame);
+    document.body.appendChild(ov);
+  }
+  function zoomEmbedNear(el) {
+    try { api.scrollToContent([el], { fitToContent: true, animate: true }); }
+    catch (e) { try { api.scrollToContent([el]); } catch (e2) {} }
+  }
+  function zoomEmbedMax(el) {
+    try {
+      var as = api.getAppState();
+      var vw = as.width, vh = as.height;
+      var z = Math.min(vw / el.width, vh / el.height);
+      z = Math.max(0.1, Math.min(z, 30));
+      var ecx = el.x + el.width / 2, ecy = el.y + el.height / 2;
+      var scrollX = vw / (2 * z) - ecx;
+      var scrollY = vh / (2 * z) - ecy;
+      api.updateScene({ appState: { scrollX: scrollX, scrollY: scrollY, zoom: { value: z } } });
+    } catch (e) { dovErr("זום נכשל: " + e.message); }
+  }
+  function openFocusModal() {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    var embeds = listEmbeds();
+    var selIds = api.getAppState().selectedElementIds || {};
+    dovModal("🎯 מיקוד בהטמעה", function (box, close) {
+      if (!embeds.length) {
+        var e = document.createElement("div");
+        e.className = "hint";
+        e.textContent = "אין עדיין הטמעות בקנבס. הוסף אחת עם ➕ שבעמודה הימנית.";
+        box.appendChild(e);
+        return;
+      }
+      var intro = document.createElement("div");
+      intro.className = "hint";
+      intro.style.marginBottom = "8px";
+      intro.textContent = "🔒 נעילה = מסך מלא, עבודה כמו על הקובץ המקורי · 🔎 קירוב · 🔳 מקסימום (עדיין אפשר לגרור).";
+      box.appendChild(intro);
+      embeds.forEach(function (el) {
+        var pe = parseEmbed(el.link);
+        var row = document.createElement("div");
+        row.className = "rowLine";
+        if (selIds[el.id]) row.style.background = "#e7f3f8";
+        var nm = document.createElement("span");
+        nm.className = "grow";
+        nm.textContent = widgetIcon(pe.type) + " " + pe.name;
+        row.appendChild(nm);
+        function act(label, fn, primary) {
+          var b = document.createElement("button");
+          b.textContent = label;
+          if (primary) b.className = "primary";
+          b.addEventListener("click", fn);
+          row.appendChild(b);
+        }
+        act("🔒", function () { close(); openFocus(el.link, pe.name); }, true);
+        act("🔎", function () { close(); zoomEmbedNear(el); });
+        act("🔳", function () { close(); zoomEmbedMax(el); });
+        box.appendChild(row);
+      });
+    });
+  }
+  document.getElementById("railEmbed").addEventListener("click", openEmbedModal);
+  document.getElementById("railFocus").addEventListener("click", openFocusModal);
 
   // ===== העתקת קישור (clipboard חסום בהטמעה — execCommand קודם) =====
   function copyText(t, okMsg) {
@@ -744,7 +978,7 @@
     setTimeout(function () { location.reload(); }, 700);
   });
 
-  // ===== נווט אובייקטים: רשימת כל מה שקיים בקנבס + קפיצה מהירה =====
+  // ===== נווט אובייקטים: רשימת כל מה שקיים בקנבס + קפיצה מהי��ה =====
   var navTypeNames = { rectangle: "▭ מלבן", ellipse: "◯ אליפסה", diamond: "◇ מעוין", arrow: "➜ חץ", line: "─ קו", freedraw: "✏️ ציור חופשי", text: "🅰 טקסט", image: "🖼 תמונה", embeddable: "🌐 הטמעה", frame: "🖽 מסגרת" };
   var navBack = null;
   document.getElementById("railList").addEventListener("click", function () {
@@ -779,7 +1013,7 @@
           var t = el.text.replace(/\s+/g, " ").trim();
           label = "🅰 " + (t.length > 38 ? t.slice(0, 38) + "…" : (t || "טקסט ריק"));
         }
-        if (el.type === "embeddable" && el.link) label = "🌐 " + el.link.slice(0, 38);
+        if (el.type === "embeddable" && el.link) { var pe2 = parseEmbed(el.link); label = widgetIcon(pe2.type) + " " + pe2.name; }
         var b = document.createElement("button");
         b.className = "dovListItem";
         b.textContent = label;

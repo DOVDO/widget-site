@@ -179,7 +179,10 @@
   const zoomPct = document.getElementById("zoomPct");
 
   window.addEventListener("error", (e) => {
-    if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + e.message;
+    const m = (e && e.message) || "";
+    // שגיאות חוצות-מקור (סקריפטים מ-CDN) מגיעות כ-"Script error." בלי פרטים — מתעלמים מרעש כזה
+    if (!m || m.toLowerCase().indexOf("script error") >= 0) return;
+    if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + m;
   });
 
   // ----- טעינת המסמך -----
