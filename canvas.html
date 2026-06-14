@@ -132,7 +132,7 @@
   <button id="railStyle" title="עיצוב האובייקט המסומן — צבעים, קו, מילוי ועוד">🎨</button>
   <button id="railEmbed" title="הטמעת מסמך / גיליון / קנבס בתוך הקנבס — או יצירת חדש">➕</button>
   <button id="railFocus" title="מצב מיקוד על הטמעה — נעילה, זום קירוב, זום מקסימלי">🎯</button>
-  <button id="railDraw" title="מצב ציור — עט, מרקר, מחק, צבעים, גודל">✏️</button>
+  <button id="railDraw" title="מצב ציו�� — עט, מרקר, מחק, צבעים, גודל">✏️</button>
   <button id="railFull" title="מסך מלא (כמו במירו)">⛶</button>
   <button id="railLive" title="מצב לייב — סנכרון מיידי בין המחשב לפלאפון">🔴</button>
   <div id="dovDot" title="מצב סנכרון"></div>
@@ -665,8 +665,18 @@
   })();
 
   // ===== מצב ציור: פלטת ציור נוחה למגע =====
-  var DRAW_STEPS = [1, 2, 4, 6, 9, 14, 22];
-  var penIdx = 2;
+  var DRAW_STEPS = [0.5, 1, 1.5, 2, 3, 4, 5, 7, 9, 12, 16, 22];
+  var penIdx = 3;
+  var PEN_TYPES = [
+    { id: "pen", label: "עט רגיל", emoji: "✏️", wf: 1, op: 100, desc: "קו חלק ואחיד" },
+    { id: "fine", label: "עט דק", emoji: "🖊️", wf: 0.55, op: 100, desc: "מדויק — לכתב יד" },
+    { id: "bold", label: "טוש", emoji: "🖌️", wf: 1.9, op: 100, desc: "קו עבה ומלא" },
+    { id: "soft", label: "עט רך", emoji: "🖋️", wf: 0.9, op: 72, desc: "רך ומעט שקוף" }
+  ];
+  var penType = "pen";
+  function penTypeDef(id) { for (var i = 0; i < PEN_TYPES.length; i++) { if (PEN_TYPES[i].id === id) return PEN_TYPES[i]; } return PEN_TYPES[0]; }
+  try { var _ps = parseInt(localStorage.getItem("dov-canvas-pensize"), 10); if (!isNaN(_ps) && _ps >= 0 && _ps < DRAW_STEPS.length) penIdx = _ps; } catch (e) {}
+  try { var _pt = localStorage.getItem("dov-canvas-pentype"); if (_pt && penTypeDef(_pt).id === _pt) penType = _pt; } catch (e) {}
   var penColor = "#1e1e1e";
   var curTool = "freedraw";
   var drawPalette = null, drawSelTool = null, drawOn = false;
@@ -681,8 +691,9 @@
       if (curTool === "laser") { try { api.setActiveTool({ type: "laser" }); } catch (e) { api.setActiveTool({ type: "selection" }); } return; }
       if (curTool === "selection") { api.setActiveTool({ type: "selection" }); return; }
       api.setActiveTool({ type: "freedraw" });
-      var op = curTool === "marker" ? 38 : 100;
-      var w = curTool === "marker" ? Math.max(penW() * 2.2, 10) : penW();
+      var ptd = penTypeDef(penType);
+      var op = curTool === "marker" ? 38 : ptd.op;
+      var w = curTool === "marker" ? Math.max(penW() * 2.2, 10) : Math.max(penW() * ptd.wf, 0.5);
       api.updateScene({ appState: { currentItemStrokeColor: penColor, currentItemStrokeWidth: w, currentItemOpacity: op } });
       try { api.updateScene({ appState: { activeTool: { type: "freedraw", locked: true, lastActiveTool: null, customType: null } } }); } catch (e) {}
     } catch (e) {}
@@ -710,6 +721,39 @@
     toolBtn("eraser", "🧽", "מחק");
     toolBtn("laser", "🔦", "מצביע לייזר — לסמן בלי לצייר");
     toolBtn("selection", "👆", "בחירה והזזה");
+    var penBtn = toolBtns["freedraw"];
+    function refreshPenBtn() { if (penBtn) penBtn.textContent = penTypeDef(penType).emoji; }
+    function openPenMenu() {
+      var ex = document.getElementById("penMenu"); if (ex) { ex.remove(); return; }
+      var m = document.createElement("div"); m.id = "penMenu";
+      m.style.cssText = "position:fixed;z-index:100000;background:#fff;border:1px solid #e3e1dc;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:6px;display:flex;flex-direction:column;gap:2px;min-width:190px;";
+      PEN_TYPES.forEach(function (pt) {
+        var row = document.createElement("button");
+        row.style.cssText = "display:flex;align-items:center;gap:10px;background:" + (pt.id === penType ? "#eef3f8" : "transparent") + ";border:none;border-radius:8px;padding:8px 10px;cursor:pointer;text-align:right;font:inherit;";
+        row.innerHTML = "<span style='font-size:18px'>" + pt.emoji + "</span><span style='display:flex;flex-direction:column;align-items:flex-start'><b style='font-size:13px'>" + pt.label + "</b><span style='font-size:11px;color:#888'>" + pt.desc + "</span></span>";
+        row.addEventListener("click", function () {
+          penType = pt.id; try { localStorage.setItem("dov-canvas-pentype", penType); } catch (e) {}
+          refreshPenBtn(); m.remove(); if (!drawOn) setDrawMode(true); selTool("freedraw");
+        });
+        m.appendChild(row);
+      });
+      document.body.appendChild(m);
+      var r = penBtn.getBoundingClientRect();
+      m.style.left = Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8)) + "px";
+      m.style.top = (r.bottom + 6) + "px";
+      if (m.getBoundingClientRect().bottom > window.innerHeight) m.style.top = Math.max(8, r.top - m.offsetHeight - 6) + "px";
+      setTimeout(function () { document.addEventListener("pointerdown", function onDoc(ev) { if (!m.contains(ev.target) && ev.target !== penBtn) { m.remove(); document.removeEventListener("pointerdown", onDoc, true); } }, true); }, 0);
+    }
+    (function () {
+      var lt = null, lf = false;
+      function clr() { if (lt) { clearTimeout(lt); lt = null; } }
+      penBtn.addEventListener("pointerdown", function () { lf = false; clr(); lt = setTimeout(function () { lf = true; openPenMenu(); }, 500); });
+      penBtn.addEventListener("pointerup", clr);
+      penBtn.addEventListener("pointerleave", clr);
+      penBtn.addEventListener("pointercancel", clr);
+      penBtn.addEventListener("click", function (e) { if (lf) { lf = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+    })();
+    refreshPenBtn();
     function sep() { var s = document.createElement("span"); s.className = "dpSep"; p.appendChild(s); }
     sep();
     var grpBtn = document.createElement("button"); grpBtn.className = "dpTool"; grpBtn.textContent = "🆕"; grpBtn.title = "כתיבה בקבוצה חדשה — כל מה שתצייר ייכנס לקבוצה אחת";
@@ -732,9 +776,9 @@
     var sizeLbl = document.createElement("span"); sizeLbl.className = "dpSize";
     function refreshSize() { sizeLbl.textContent = penW(); }
     var minus = document.createElement("button"); minus.className = "dpBtn"; minus.textContent = "➖"; minus.title = "עט דק יותר";
-    minus.addEventListener("click", function () { if (penIdx > 0) penIdx--; refreshSize(); applyTool(); });
+    minus.addEventListener("click", function () { if (penIdx > 0) penIdx--; refreshSize(); applyTool(); try { localStorage.setItem("dov-canvas-pensize", penIdx); } catch (e) {} });
     var plus = document.createElement("button"); plus.className = "dpBtn"; plus.textContent = "➕"; plus.title = "עט עבה יותר";
-    plus.addEventListener("click", function () { if (penIdx < DRAW_STEPS.length - 1) penIdx++; refreshSize(); applyTool(); });
+    plus.addEventListener("click", function () { if (penIdx < DRAW_STEPS.length - 1) penIdx++; refreshSize(); applyTool(); try { localStorage.setItem("dov-canvas-pensize", penIdx); } catch (e) {} });
     p.appendChild(minus); p.appendChild(sizeLbl); p.appendChild(plus);
     sep();
     var COLORS = ["#1e1e1e", "#e03e3e", "#0b6e99", "#0f7b6c", "#d9730d", "#6940a5"];
@@ -1308,7 +1352,7 @@
   });
 
   // ===== נווט אובייקטים: רשימת כל מה שקיים בקנבס + קפיצה מהי��ה =====
-  var navTypeNames = { rectangle: "▭ מלבן", ellipse: "◯ אליפסה", diamond: "◇ מעוין", arrow: "➜ חץ", line: "─ קו", freedraw: "✏️ ציור חופשי", text: "🅰 טקסט", image: "🖼 תמונה", embeddable: "🌐 הטמעה", frame: "🖽 מסגרת" };
+  var navTypeNames = { rectangle: "▭ מלבן", ellipse: "◯ אליפסה", diamond: "◇ מעוין", arrow: "➜ חץ", line: "─ קו", freedraw: "✏️ ציור חופש��", text: "🅰 טקסט", image: "🖼 תמונה", embeddable: "🌐 הטמעה", frame: "🖽 מסגרת" };
   // ===== מנהל אובייקטים חכם: תיקיות / קבוצות / אובייקטים =====
   // ===== מנהל אובייקטים חכם: תיקיות / קבוצות / אובייקטים =====
   var navBack = null;
@@ -1767,7 +1811,7 @@
   var dotEl = document.getElementById("dovDot");
   function dovStatusColor(t) {
     t = t || "";
-    if (t.indexOf("שגיא") >= 0 || t.indexOf("⚠️") >= 0) return "#e03e3e";
+    if (t.indexOf("��גיא") >= 0 || t.indexOf("⚠️") >= 0) return "#e03e3e";
     if (t.indexOf("מסנכרן") >= 0 || t.indexOf("טוען") >= 0) return "#b08968";
     if (t.indexOf("מסונכרן") >= 0) return "#0f7b6c";
     if (t.indexOf("נשמר") >= 0) return (window.dovCloud && dovCloud.spaceId()) ? "#0f7b6c" : "#9b9a97";
