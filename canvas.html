@@ -96,6 +96,12 @@
   #drawPalette .dpColor { width: 36px; height: 36px; border: 1px solid #d3d1cb; border-radius: 8px; background: #fff; cursor: pointer; padding: 2px; flex: none; }
   #drawPalette .dpSep { width: 1px; height: 30px; background: #e3e2de; flex: none; margin: 0 2px; }
 
+  /* ===== בקרת זום צפה (נוח למגע) ===== */
+  #zoomCtl { position: fixed; bottom: 14px; right: 56px; z-index: 9200; display: flex; align-items: center; gap: 2px; background: #fff; border: 1px solid #d3d1cb; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 3px; direction: ltr; }
+  #zoomCtl button { width: 38px; height: 38px; border: none; background: transparent; border-radius: 9px; cursor: pointer; font-size: 19px; color: #37352f; padding: 0; line-height: 1; }
+  #zoomCtl button:hover { background: #f1f1ef; }
+  #zoomCtl #zoomPct { min-width: 48px; font-size: 13px; font-weight: 600; }
+  #zoomCtl .zsep { width: 1px; height: 22px; background: #e3e2de; margin: 0 1px; }
   #toast { position: fixed; bottom: 16px; inset-inline-end: 16px; background: #37352f; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; z-index: 99999; display: none; }
 </style>
 </head>
@@ -127,8 +133,16 @@
   <button id="railEmbed" title="הטמעת מסמך / גיליון / קנבס בתוך הקנבס — או יצירת חדש">➕</button>
   <button id="railFocus" title="מצב מיקוד על הטמעה — נעילה, זום קירוב, זום מקסימלי">🎯</button>
   <button id="railDraw" title="מצב ציור — עט, מרקר, מחק, צבעים, גודל">✏️</button>
+  <button id="railFull" title="מסך מלא (כמו במירו)">⛶</button>
   <button id="railLive" title="מצב לייב — סנכרון מיידי בין המחשב לפלאפון">🔴</button>
   <div id="dovDot" title="מצב סנכרון"></div>
+</div>
+<div id="zoomCtl">
+  <button id="zoomOut" title="הקטן">−</button>
+  <button id="zoomPct" title="100% — לחיצה לאיפוס">100%</button>
+  <button id="zoomIn" title="הגדל">+</button>
+  <span class="zsep"></span>
+  <button id="zoomFit" title="התאם לכל התוכן">⤢</button>
 </div>
 <div id="pinLayer"></div>
 <div id="errBanner"></div>
@@ -577,6 +591,81 @@
   }
   document.getElementById("railEmbed").addEventListener("click", openEmbedModal);
   document.getElementById("railFocus").addEventListener("click", openFocusModal);
+
+  // ===== זום ומסך מלא =====
+  function cvClampZoom(z) { return Math.min(30, Math.max(0.1, z)); }
+  function cvUpdateZoomLabel() {
+    try {
+      var lbl = document.getElementById("zoomPct");
+      if (lbl && api) { var z = (api.getAppState().zoom || {}).value || 1; lbl.textContent = Math.round(z * 100) + "%"; }
+    } catch (e) {}
+  }
+  function cvZoomBy(factor) {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    try {
+      var as = api.getAppState();
+      var z0 = (as.zoom && as.zoom.value) || 1;
+      var z1 = cvClampZoom(z0 * factor);
+      var w = as.width || 0, h = as.height || 0;
+      var cxs = -as.scrollX + (w / 2) / z0;
+      var cys = -as.scrollY + (h / 2) / z0;
+      api.updateScene({ appState: { zoom: { value: z1 }, scrollX: -(cxs - (w / 2) / z1), scrollY: -(cys - (h / 2) / z1) } });
+      cvUpdateZoomLabel();
+    } catch (e) {}
+  }
+  function cvZoomReset() {
+    if (!api) return;
+    try {
+      var as = api.getAppState();
+      var z0 = (as.zoom && as.zoom.value) || 1, w = as.width || 0, h = as.height || 0;
+      var cxs = -as.scrollX + (w / 2) / z0, cys = -as.scrollY + (h / 2) / z0;
+      api.updateScene({ appState: { zoom: { value: 1 }, scrollX: -(cxs - (w / 2)), scrollY: -(cys - (h / 2)) } });
+      cvUpdateZoomLabel();
+    } catch (e) {}
+  }
+  function cvZoomFit() {
+    if (!api) return;
+    try {
+      var els = api.getSceneElements ? api.getSceneElements() : [];
+      if (els && els.length) { api.scrollToContent(els, { fitToContent: true, animate: true }); }
+      else { cvZoomReset(); }
+      setTimeout(cvUpdateZoomLabel, 380);
+    } catch (e) {}
+  }
+  function cvToggleFullscreen() {
+    try {
+      var d = document;
+      var fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+      if (!fsEl) {
+        var el = d.documentElement;
+        var req = el.requestFullscreen || el.webkitRequestFullscreen;
+        if (!req) { toast("הדפדפן לא תומך במסך מלא"); return; }
+        var p = req.call(el);
+        if (p && p.catch) p.catch(function () { toast("נושן חסם מסך מלא כאן — פתח את הקובץ בכרטיסייה נפרדת (העתק קישור דרך \ud83d\udd17)"); });
+      } else {
+        var ex = d.exitFullscreen || d.webkitExitFullscreen;
+        if (ex) ex.call(d);
+      }
+    } catch (e) { toast("מסך מלא לא נתמך כאן"); }
+  }
+  function cvSyncFullBtn() {
+    var b = document.getElementById("railFull");
+    if (!b) return;
+    var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    b.classList.toggle("on", on);
+    b.textContent = on ? "\ud83d\uddd7" : "\u26f6";
+    b.title = on ? "יציאה ממסך מלא" : "מסך מלא (כמו במירו)";
+  }
+  document.addEventListener("fullscreenchange", cvSyncFullBtn);
+  document.addEventListener("webkitfullscreenchange", cvSyncFullBtn);
+  (function () {
+    var zi = document.getElementById("zoomIn"); if (zi) zi.addEventListener("click", function () { cvZoomBy(1.25); });
+    var zo = document.getElementById("zoomOut"); if (zo) zo.addEventListener("click", function () { cvZoomBy(0.8); });
+    var zp = document.getElementById("zoomPct"); if (zp) zp.addEventListener("click", cvZoomReset);
+    var zf = document.getElementById("zoomFit"); if (zf) zf.addEventListener("click", cvZoomFit);
+    var rf = document.getElementById("railFull"); if (rf) rf.addEventListener("click", cvToggleFullscreen);
+    setTimeout(cvUpdateZoomLabel, 1600);
+  })();
 
   // ===== מצב ציור: פלטת ציור נוחה למגע =====
   var DRAW_STEPS = [1, 2, 4, 6, 9, 14, 22];
