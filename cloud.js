@@ -32,6 +32,32 @@
     return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
+  // מזהה ייחודי וקבוע למכשיר הזה — כדי שלא נגיב לשינויים שאנחנו עצמנו כתבנו
+  const CLIENT_KEY = "dov-client-id";
+  function clientId() {
+    try {
+      let id = localStorage.getItem(CLIENT_KEY);
+      if (!id) { id = newSpaceId(); localStorage.setItem(CLIENT_KEY, id); }
+      return id;
+    } catch (e) { return "anon"; }
+  }
+
+  // האזנה חיה למסמך בודד (Firestore onSnapshot). מחזיר פונקציית ביטול.
+  // מדלג על שינויים שמקורם במכשיר הזה כדי למנוע הד.
+  function watchDoc(id, cb) {
+    if (!ready() || !id) return function () {};
+    try {
+      return docRef(id).onSnapshot(function (snap) {
+        if (!snap.exists) return;
+        if (snap.metadata && snap.metadata.hasPendingWrites) return;
+        const c = snap.data();
+        if (!c || c.deleted) return;
+        if (c.lastWriter && c.lastWriter === clientId()) return;
+        try { cb(c); } catch (e) {}
+      }, function (err) { console.error("watchDoc error", err); });
+    } catch (e) { console.error("watchDoc failed", e); return function () {}; }
+  }
+
   function initDb() {
     if (db) return true;
     try {
@@ -67,6 +93,7 @@
       links: d.links || [],
       created: d.created || "",
       updated: d.updated || "",
+      lastWriter: clientId(),
     };
   }
   function cloudToDoc(id, c) {
@@ -187,6 +214,8 @@
     flush: flush,
     bindStatus: function (el) { statusEl = el; },
     isReady: ready,
+    clientId: clientId,
+    watchDoc: watchDoc,
   };
   window.dovStorageChanged = queuePush;
 

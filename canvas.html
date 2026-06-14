@@ -2,11 +2,11 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>קנבס אינסופי</title>
 <style>
   html, body { height: 100%; margin: 0; }
-  body { display: flex; flex-direction: column; font-family: "Segoe UI", "Heebo", Arial, sans-serif; background: #fff; color: #37352f; overflow: hidden; }
+  body { display: flex; flex-direction: column; font-family: "Segoe UI", "Heebo", Arial, sans-serif; background: #fff; color: #37352f; overflow: hidden; overscroll-behavior: none; }
 
   /* ===== סרגל עליון (מתחיל מתחת לאזור הריחוף של נושן) ===== */
   #bar { display: flex; align-items: center; gap: 6px; padding: 46px 10px 6px 10px; border-bottom: 1px solid #f1f1ef; overflow-x: auto; overflow-y: hidden; flex: none; scrollbar-width: thin; }
@@ -20,7 +20,7 @@
   #spacer { display: none; height: 42px; flex: none; }
   body.noChrome #spacer { display: block; }
   body.noChrome #bar { display: none; }
-  #canvasRoot { flex: 1; min-height: 0; position: relative; margin-right: 46px; }
+  #canvasRoot { flex: 1; min-height: 0; position: relative; margin-right: 46px; touch-action: none; }
   #bgLines { display: none; position: fixed; inset: 0 46px 0 0; z-index: 2; pointer-events: none; background: repeating-linear-gradient(to bottom, transparent 0, transparent 27px, rgba(55,53,47,.08) 27px, rgba(55,53,47,.08) 28px); }
   #canvasRoot > div { width: 100%; height: 100%; }
   #saveStatus { display: none; }
@@ -79,6 +79,23 @@
   .dovBox .btnRow { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .dovBox .hint { font-size: 11.5px; color: #787774; margin-top: 8px; }
 
+  /* ===== מצב לייב — נורית בסרגל ===== */
+  #railLive.on { border-color: #e03e3e !important; background: #fdecec !important; animation: dovLivePulse 1.6s infinite; }
+  @keyframes dovLivePulse { 0%, 100% { box-shadow: 0 1px 4px rgba(0,0,0,.14); } 50% { box-shadow: 0 0 0 3px rgba(224,62,62,.35); } }
+
+  /* ===== פלטת ציור (נוחה למגע) ===== */
+  #drawPalette { display: none; position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 9300; gap: 5px; align-items: center; background: #fff; border: 1px solid #d3d1cb; border-radius: 16px; box-shadow: 0 6px 24px rgba(0,0,0,.24); padding: 7px 10px; direction: rtl; max-width: calc(100vw - 70px); overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+  #drawPalette button { border: 1px solid #d3d1cb; background: #fff; border-radius: 10px; cursor: pointer; padding: 0; flex: none; }
+  #drawPalette button:hover { background: #f1f1ef; }
+  #drawPalette .dpTool { width: 44px; height: 44px; font-size: 20px; }
+  #drawPalette .dpTool.act { border-color: #0b6e99; background: #e7f3f8; }
+  #drawPalette .dpBtn { width: 40px; height: 44px; font-size: 17px; }
+  #drawPalette .dpSize { min-width: 26px; text-align: center; font-size: 15px; font-weight: 700; color: #37352f; }
+  #drawPalette .dpSw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #d3d1cb; }
+  #drawPalette .dpSw.act { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0b6e99; }
+  #drawPalette .dpColor { width: 36px; height: 36px; border: 1px solid #d3d1cb; border-radius: 8px; background: #fff; cursor: pointer; padding: 2px; flex: none; }
+  #drawPalette .dpSep { width: 1px; height: 30px; background: #e3e2de; flex: none; margin: 0 2px; }
+
   #toast { position: fixed; bottom: 16px; inset-inline-end: 16px; background: #37352f; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; z-index: 99999; display: none; }
 </style>
 </head>
@@ -109,6 +126,8 @@
   <button id="railStyle" title="עיצוב האובייקט המסומן — צבעים, קו, מילוי ועוד">🎨</button>
   <button id="railEmbed" title="הטמעת מסמך / גיליון / קנבס בתוך הקנבס — או יצירת חדש">➕</button>
   <button id="railFocus" title="מצב מיקוד על הטמעה — נעילה, זום קירוב, זום מקסימלי">🎯</button>
+  <button id="railDraw" title="מצב ציור — עט, מרקר, מחק, צבעים, גודל">✏️</button>
+  <button id="railLive" title="מצב לייב — סנכרון מיידי בין המחשב לפלאפון">🔴</button>
   <div id="dovDot" title="מצב סנכרון"></div>
 </div>
 <div id="pinLayer"></div>
@@ -257,7 +276,7 @@
       langCode: "he-IL",
       validateEmbeddable: true,
       renderEmbeddable: dovRenderEmbeddable,
-      onChange: function () { scheduleSave(); },
+      onChange: function () { lastLocalEditAt = Date.now(); scheduleSave(); },
       UIOptions: { canvasActions: { loadScene: false } }
     };
     var App = function () {
@@ -512,7 +531,7 @@
       var ecx = el.x + el.width / 2, ecy = el.y + el.height / 2;
       var scrollX = vw / (2 * z) - ecx;
       var scrollY = vh / (2 * z) - ecy;
-      // מבטלים את מצב "פעיל" כדי שאפשר יהיה לגרור ולהזיז כרגיל
+      // מבטלים את מצב "פעיל" כדי שאפשר יהיה לגרור ולהזי�� כרגיל
       api.updateScene({ appState: { scrollX: scrollX, scrollY: scrollY, zoom: { value: z }, activeEmbeddable: null } });
     } catch (e) { dovErr("זום נכשל: " + e.message); }
   }
@@ -558,6 +577,144 @@
   }
   document.getElementById("railEmbed").addEventListener("click", openEmbedModal);
   document.getElementById("railFocus").addEventListener("click", openFocusModal);
+
+  // ===== מצב ציור: פלטת ציור נוחה למגע =====
+  var DRAW_STEPS = [1, 2, 4, 6, 9, 14, 22];
+  var penIdx = 2;
+  var penColor = "#1e1e1e";
+  var curTool = "freedraw";
+  var drawPalette = null, drawSelTool = null, drawOn = false;
+  var lastLocalEditAt = 0;
+  function penW() { return DRAW_STEPS[penIdx]; }
+  function applyTool() {
+    if (!api) return;
+    try {
+      if (curTool === "eraser") { api.setActiveTool({ type: "eraser" }); return; }
+      if (curTool === "laser") { try { api.setActiveTool({ type: "laser" }); } catch (e) { api.setActiveTool({ type: "selection" }); } return; }
+      if (curTool === "selection") { api.setActiveTool({ type: "selection" }); return; }
+      api.setActiveTool({ type: "freedraw" });
+      var op = curTool === "marker" ? 38 : 100;
+      var w = curTool === "marker" ? Math.max(penW() * 2.2, 10) : penW();
+      api.updateScene({ appState: { currentItemStrokeColor: penColor, currentItemStrokeWidth: w, currentItemOpacity: op } });
+      try { api.updateScene({ appState: { activeTool: { type: "freedraw", locked: true, lastActiveTool: null, customType: null } } }); } catch (e) {}
+    } catch (e) {}
+  }
+  function buildDrawPalette() {
+    if (drawPalette) return drawPalette;
+    var p = document.createElement("div");
+    p.id = "drawPalette";
+    var toolBtns = {};
+    function selTool(t) {
+      curTool = t;
+      Object.keys(toolBtns).forEach(function (k) { toolBtns[k].classList.toggle("act", k === t); });
+      applyTool();
+    }
+    drawSelTool = selTool;
+    function toolBtn(t, label, title) {
+      var b = document.createElement("button");
+      b.className = "dpTool"; b.textContent = label; b.title = title;
+      b.addEventListener("click", function () { selTool(t); });
+      toolBtns[t] = b; p.appendChild(b);
+    }
+    toolBtn("freedraw", "✏️", "עט");
+    toolBtn("marker", "🖍️", "מרקר — סימון שקוף ורחב");
+    toolBtn("eraser", "🧽", "מחק");
+    toolBtn("laser", "🔦", "מצביע לייזר — לסמן בלי לצייר");
+    toolBtn("selection", "👆", "בחירה והזזה");
+    function sep() { var s = document.createElement("span"); s.className = "dpSep"; p.appendChild(s); }
+    sep();
+    var sizeLbl = document.createElement("span"); sizeLbl.className = "dpSize";
+    function refreshSize() { sizeLbl.textContent = penW(); }
+    var minus = document.createElement("button"); minus.className = "dpBtn"; minus.textContent = "➖"; minus.title = "עט דק יותר";
+    minus.addEventListener("click", function () { if (penIdx > 0) penIdx--; refreshSize(); applyTool(); });
+    var plus = document.createElement("button"); plus.className = "dpBtn"; plus.textContent = "➕"; plus.title = "עט עבה יותר";
+    plus.addEventListener("click", function () { if (penIdx < DRAW_STEPS.length - 1) penIdx++; refreshSize(); applyTool(); });
+    p.appendChild(minus); p.appendChild(sizeLbl); p.appendChild(plus);
+    sep();
+    var COLORS = ["#1e1e1e", "#e03e3e", "#0b6e99", "#0f7b6c", "#d9730d", "#6940a5"];
+    var swatches = [];
+    function setColor(c, fromSwatch) {
+      penColor = c; applyTool();
+      swatches.forEach(function (x) { x.classList.toggle("act", fromSwatch === x); });
+    }
+    COLORS.forEach(function (c) {
+      var s = document.createElement("button");
+      s.className = "dpSw"; s.style.background = c; s.title = "צבע";
+      s.addEventListener("click", function () { setColor(c, s); });
+      swatches.push(s); p.appendChild(s);
+    });
+    swatches[0].classList.add("act");
+    var custom = document.createElement("input");
+    custom.type = "color"; custom.className = "dpColor"; custom.value = penColor; custom.title = "צבע מותאם אישי";
+    custom.addEventListener("input", function () { setColor(custom.value, null); });
+    p.appendChild(custom);
+    sep();
+    var closeBtn = document.createElement("button"); closeBtn.className = "dpBtn"; closeBtn.textContent = "✖"; closeBtn.title = "סגירת מצב ציור";
+    closeBtn.addEventListener("click", function () { setDrawMode(false); });
+    p.appendChild(closeBtn);
+    refreshSize();
+    drawPalette = p;
+    document.body.appendChild(p);
+    return p;
+  }
+  function setDrawMode(on) {
+    drawOn = on;
+    var p = buildDrawPalette();
+    p.style.display = on ? "flex" : "none";
+    var rb = document.getElementById("railDraw");
+    if (rb) rb.classList.toggle("on", on);
+    try { localStorage.setItem("dov-canvas-draw", on ? "1" : "0"); } catch (e) {}
+    if (on && drawSelTool) drawSelTool(curTool || "freedraw");
+    else if (!on && api) { try { api.setActiveTool({ type: "selection" }); } catch (e) {} }
+  }
+  var railDrawBtn = document.getElementById("railDraw");
+  if (railDrawBtn) railDrawBtn.addEventListener("click", function () { setDrawMode(!drawOn); });
+
+  // ===== מצב לייב: סנכרון מיידי בין מכשירים =====
+  var liveUnsub = null;
+  function applyRemoteCanvas(c) {
+    if (!api || !c || c.deleted) return;
+    if (Date.now() - lastLocalEditAt < 1500) { setTimeout(function () { applyRemoteCanvas(c); }, 1200); return; }
+    try {
+      var data = c.content ? JSON.parse(c.content) : null;
+      if (!data || !data.elements) return;
+      if (data.views) dovViews = data.views;
+      api.updateScene({ elements: data.elements, files: data.files || {} });
+      try { lastSig = contentSig(snapshotCanvas()); } catch (e) {}
+      try {
+        window.dovStore.putDoc({
+          id: docId, type: "canvas", name: c.name || docRec.name,
+          content: c.content || "", data: null, folderId: c.folderId || null,
+          links: c.links || [], created: c.created || docRec.created, updated: c.updated || ""
+        });
+      } catch (e) {}
+      toast("עודכן מהענן 🔄");
+    } catch (e) {}
+  }
+  function setLive(on) {
+    var rb = document.getElementById("railLive");
+    if (on) {
+      if (!window.dovCloud || !dovCloud.isReady()) { toast("צריך להפעיל סנכרון ענן קודם — כפתור 🔄"); return; }
+      if (typeof dovCloud.watchDoc !== "function") { toast("גרסת הענן לא תומכת בלייב — רענן את הדף"); return; }
+      if (liveUnsub) return;
+      liveUnsub = dovCloud.watchDoc(docId, applyRemoteCanvas);
+      if (rb) rb.classList.add("on");
+      try { localStorage.setItem("dov-canvas-live", "1"); } catch (e) {}
+      toast("מצב לייב פעיל 🔴 — שינויים ממכשירים אחרים יופיעו כאן מיד");
+    } else {
+      if (liveUnsub) { try { liveUnsub(); } catch (e) {} liveUnsub = null; }
+      if (rb) rb.classList.remove("on");
+      try { localStorage.setItem("dov-canvas-live", "0"); } catch (e) {}
+      toast("מצב לייב כבוי");
+    }
+  }
+  var railLiveBtn = document.getElementById("railLive");
+  if (railLiveBtn) railLiveBtn.addEventListener("click", function () { setLive(!liveUnsub); });
+  setTimeout(function () {
+    try {
+      if (localStorage.getItem("dov-canvas-live") === "1" && window.dovCloud && dovCloud.isReady()) setLive(true);
+    } catch (e) {}
+  }, 1300);
   // הקשבה להודעות מתוך הווידג'טים המוטמעים (כפתורי נעילה/זום שבתוכם)
   window.addEventListener("message", function (ev) {
     var d = ev && ev.data;
@@ -722,7 +879,7 @@
   // ===== כלי ייצוא משותפים: העתקה / PNG / PDF / הדפסה =====
   function safeName() { return ((docRec.name || "canvas").replace(/[\\/:*?"<>|]/g, "-")); }
 
-  // העתקת תמונה — אותה דרך כמו בגיליון: קודם execCommand (עובד בהטמעה), ורק אז ה־ API החדש
+  // העתקת ת��ונה — אותה דרך כמו בגיליון: קודם execCommand (עובד בהטמעה), ורק אז ה־ API החדש
   function copyImageData(stagedImg, blob) {
     if (stagedImg && !stagedImg.dataset.ready) { toast("התמונה עדיין נטענת — נסה שוב בעוד רגע"); return; }
     // הטריק: מיירטים את אירוע ההעתקה וכותבים ללוח בעצמנו HTML עם התמונה —
