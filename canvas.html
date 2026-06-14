@@ -96,12 +96,11 @@
   #drawPalette .dpColor { width: 36px; height: 36px; border: 1px solid #d3d1cb; border-radius: 8px; background: #fff; cursor: pointer; padding: 2px; flex: none; }
   #drawPalette .dpSep { width: 1px; height: 30px; background: #e3e2de; flex: none; margin: 0 2px; }
 
-  /* ===== בקרת זום צפה (נוח למגע) ===== */
-  #zoomCtl { position: fixed; bottom: 14px; right: 56px; z-index: 9200; display: flex; align-items: center; gap: 2px; background: #fff; border: 1px solid #d3d1cb; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 3px; direction: ltr; }
-  #zoomCtl button { width: 38px; height: 38px; border: none; background: transparent; border-radius: 9px; cursor: pointer; font-size: 19px; color: #37352f; padding: 0; line-height: 1; }
-  #zoomCtl button:hover { background: #f1f1ef; }
-  #zoomCtl #zoomPct { min-width: 48px; font-size: 13px; font-weight: 600; }
-  #zoomCtl .zsep { width: 1px; height: 22px; background: #e3e2de; margin: 0 1px; }
+  /* ===== בקרת זום בסרגל הקובץ ===== */
+  #bar .barZoom { display: inline-flex; align-items: center; gap: 1px; border: 1px solid #d3d1cb; border-radius: 6px; padding: 1px; flex: none; background: #fff; direction: ltr; }
+  #bar .barZoom button { border: none; background: transparent; padding: 2px 9px; font-size: 16px; line-height: 1; min-width: 26px; cursor: pointer; border-radius: 4px; }
+  #bar .barZoom button:hover { background: #f1f1ef; }
+  #bar #zoomPct { font-size: 12.5px; font-weight: 600; min-width: 44px; text-align: center; cursor: pointer; user-select: none; }
   #toast { position: fixed; bottom: 16px; inset-inline-end: 16px; background: #37352f; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 13px; z-index: 99999; display: none; }
 </style>
 </head>
@@ -116,6 +115,7 @@
   <button id="copyUrlBtn" title="העתקת קישור הקובץ (להטמעה בנושן)">📋 קישור</button>
   <button id="linksBtn" title="היכן הקובץ משובץ בנ��שן">🔗</button>
   <button id="hideBtn" title="הסתרת הסרגל — מסך נקי">👁️ הסתר</button>
+  <span class="barZoom"><button id="zoomOut" title="הקטן">−</button><span id="zoomPct" title="לחיצה לאיפוס 100%">100%</span><button id="zoomIn" title="הגדל">+</button></span>
   <span id="saveStatus">טוען…</span>
 </div>
 <div id="spacer"></div>
@@ -136,13 +136,6 @@
   <button id="railFull" title="מסך מלא (כמו במירו)">⛶</button>
   <button id="railLive" title="מצב לייב — סנכרון מיידי בין המחשב לפלאפון">🔴</button>
   <div id="dovDot" title="מצב סנכרון"></div>
-</div>
-<div id="zoomCtl">
-  <button id="zoomOut" title="הקטן">−</button>
-  <button id="zoomPct" title="100% — לחיצה לאיפוס">100%</button>
-  <button id="zoomIn" title="הגדל">+</button>
-  <span class="zsep"></span>
-  <button id="zoomFit" title="התאם לכל התוכן">⤢</button>
 </div>
 <div id="pinLayer"></div>
 <div id="errBanner"></div>
@@ -210,6 +203,9 @@
   try { saved = JSON.parse(docRec.content || "{}") || {}; } catch (e) { saved = {}; }
   var dovViews = Array.isArray(saved.views) ? saved.views : [];
 
+  var dovMeta = (saved.dovMeta && typeof saved.dovMeta === "object") ? saved.dovMeta : { groups: {}, folders: {} };
+  if (!dovMeta.groups) dovMeta.groups = {};
+  if (!dovMeta.folders) dovMeta.folders = {};
   var initAS = saved.appState || {};
   delete initAS.collaborators; // אחרי JSON זה כבר לא Map — חייבים להסיר כדי לא להקריס
 
@@ -230,7 +226,8 @@
         zoom: { value: (as.zoom && as.zoom.value) || 1 }
       },
       files: api.getFiles(),
-      views: dovViews
+      views: dovViews,
+      dovMeta: dovMeta
     };
   }
 
@@ -238,7 +235,7 @@
   // (onChange של Excalidraw נורה גם על סימון, גלילה ותזוזת עכבר — בלי שינוי אמיתי)
   var lastSig = null;
   function contentSig(snap) {
-    return JSON.stringify(snap.elements) + "|" + Object.keys(snap.files || {}).length + "|" + JSON.stringify(snap.views);
+    return JSON.stringify(snap.elements) + "|" + Object.keys(snap.files || {}).length + "|" + JSON.stringify(snap.views) + "|" + JSON.stringify(snap.dovMeta || {});
   }
 
   function doSave() {
@@ -290,7 +287,7 @@
       langCode: "he-IL",
       validateEmbeddable: true,
       renderEmbeddable: dovRenderEmbeddable,
-      onChange: function () { if (applyingRemote) return; lastLocalEditAt = Date.now(); scheduleSave(); },
+      onChange: function () { try { cvUpdateZoomLabel(); } catch (e) {} if (applyingRemote) return; lastLocalEditAt = Date.now(); try { scheduleCapture(); } catch (e) {} scheduleSave(); },
       UIOptions: { canvasActions: { loadScene: false } }
     };
     var App = function () {
@@ -714,6 +711,11 @@
     toolBtn("selection", "👆", "בחירה והזזה");
     function sep() { var s = document.createElement("span"); s.className = "dpSep"; p.appendChild(s); }
     sep();
+    var grpBtn = document.createElement("button"); grpBtn.className = "dpTool"; grpBtn.textContent = "🆕"; grpBtn.title = "כתיבה בקבוצה חדשה — כל מה שתצייר ייכנס לקבוצה אחת";
+    grpBtn.addEventListener("click", function () { toggleCaptureGroup(grpBtn); });
+    if (typeof captureGroupId !== "undefined" && captureGroupId) grpBtn.classList.add("act");
+    p.appendChild(grpBtn);
+    sep();
     var sizeLbl = document.createElement("span"); sizeLbl.className = "dpSize";
     function refreshSize() { sizeLbl.textContent = penW(); }
     var minus = document.createElement("button"); minus.className = "dpBtn"; minus.textContent = "➖"; minus.title = "עט דק יותר";
@@ -772,6 +774,7 @@
       if (!data || !data.elements) return;
       lastRemoteContent = c.content;
       if (data.views) dovViews = data.views;
+      if (data.dovMeta) dovMeta = data.dovMeta;
       applyingRemote = true;
       setTimeout(function () { applyingRemote = false; }, 700);
       api.updateScene({ elements: data.elements, files: data.files || {} });
@@ -1282,55 +1285,291 @@
 
   // ===== נווט אובייקטים: רשימת כל מה שקיים בקנבס + קפיצה מהי��ה =====
   var navTypeNames = { rectangle: "▭ מלבן", ellipse: "◯ אליפסה", diamond: "◇ מעוין", arrow: "➜ חץ", line: "─ קו", freedraw: "✏️ ציור חופשי", text: "🅰 טקסט", image: "🖼 תמונה", embeddable: "🌐 הטמעה", frame: "🖽 מסגרת" };
+  // ===== מנהל אובייקטים חכם: תיקיות / קבוצות / אובייקטים =====
   var navBack = null;
-  document.getElementById("railList").addEventListener("click", function () {
-    if (!api) return;
-    var els = api.getSceneElements().filter(function (el) { return !el.isDeleted; });
-    dovModal("🧭 האובייקטים בקנבס (" + els.length + ")", function (box, close) {
-      var as0 = api.getAppState();
-      var here = { scrollX: as0.scrollX, scrollY: as0.scrollY, zoom: as0.zoom };
-      if (navBack) {
-        var back = document.createElement("button");
-        back.className = "dovListItem";
-        back.style.borderColor = "#0b6e99";
-        back.textContent = "↩ חזרה למיקום שלפני הקפיצה האחרונה";
-        back.addEventListener("click", function () {
-          var b = navBack; navBack = null;
-          try { api.updateScene({ appState: { scrollX: b.scrollX, scrollY: b.scrollY, zoom: b.zoom } }); } catch (e) {}
-          close();
-        });
-        box.appendChild(back);
-      }
-      var list = document.createElement("div");
-      list.style.cssText = "max-height:48vh;overflow:auto;display:flex;flex-direction:column;gap:4px;margin-top:6px;";
-      if (!els.length) {
-        var empty = document.createElement("div");
-        empty.className = "hint";
-        empty.textContent = "הקנבס ריק — אין עדיין אובייקטים";
-        list.appendChild(empty);
-      }
-      els.forEach(function (el) {
-        var label = navTypeNames[el.type] || ("• " + el.type);
-        if (el.type === "text" && el.text) {
-          var t = el.text.replace(/\s+/g, " ").trim();
-          label = "🅰 " + (t.length > 38 ? t.slice(0, 38) + "…" : (t || "טקסט ריק"));
-        }
-        if (el.type === "embeddable" && el.link) { var pe2 = parseEmbed(el.link); label = widgetIcon(pe2.type) + " " + pe2.name; }
-        var b = document.createElement("button");
-        b.className = "dovListItem";
-        b.textContent = label;
-        b.addEventListener("click", function () {
-          navBack = here;
-          try { api.scrollToContent([el], { fitToContent: true, animate: true }); }
-          catch (e) { try { api.scrollToContent([el]); } catch (e2) {} }
-          close();
-          toast("קפצתי לאובייקט — 🧭 ↩ יחזיר אותך למיקום הקודם");
-        });
-        list.appendChild(b);
-      });
-      box.appendChild(list);
+  var objFilter = "all";
+  var objCollapsed = {};
+  var TYPE_LABELS = { pen: "✏️ עט", marker: "🖍️ מרקר", shape: "⬭ צורות", line: "➜ קווים/חצים", text: "🅰 טקסט", image: "🖼 תמונה", embed: "🌐 הטמעה", doc: "📄 מסמך", sheet: "📊 גיליון", canvas: "🎨 קנבס", other: "• אחר" };
+  function pad2(n) { n = "" + n; return n.length < 2 ? "0" + n : n; }
+  function hhmm() { var d = new Date(); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); }
+  function newGroupId() { return "dovg-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function newFolderId() { return "dovf-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function liveEls() { return api.getSceneElements().filter(function (e) { return !e.isDeleted; }); }
+
+  function elTypeKey(el) {
+    if (el.type === "freedraw") return (el.opacity != null && el.opacity < 60) ? "marker" : "pen";
+    if (el.type === "text") return "text";
+    if (el.type === "image") return "image";
+    if (el.type === "embeddable") {
+      var pe = el.link ? parseEmbed(el.link) : null;
+      if (pe && (pe.type === "doc" || pe.type === "markdown")) return "doc";
+      if (pe && pe.type === "sheet") return "sheet";
+      if (pe && pe.type === "canvas") return "canvas";
+      return "embed";
+    }
+    if (el.type === "rectangle" || el.type === "ellipse" || el.type === "diamond") return "shape";
+    if (el.type === "arrow" || el.type === "line") return "line";
+    return "other";
+  }
+  function elGroupId(el) {
+    var g = el.groupIds || [];
+    for (var i = 0; i < g.length; i++) { if (dovMeta.groups[g[i]]) return g[i]; }
+    return g.length ? g[0] : null;
+  }
+  function ensureGroupMeta(gid) { if (gid && !dovMeta.groups[gid]) dovMeta.groups[gid] = { name: "קבוצה", folderId: "__none__" }; return dovMeta.groups[gid] || { name: "קבוצה", folderId: "__none__" }; }
+  function groupName(gid) { var m = dovMeta.groups[gid]; return (m && m.name) || "קבוצה"; }
+  function groupFolder(gid) { var m = dovMeta.groups[gid]; return (m && m.folderId) || "__none__"; }
+  function elFolder(el) { var gid = elGroupId(el); if (gid) return groupFolder(gid); return (el.customData && el.customData.dovFolder) || "__none__"; }
+  function isHidden(el) { return !!(el.customData && el.customData.dovHidden); }
+  function metaChanged() { try { scheduleSave(); } catch (e) {} }
+  function panelSelectedEls() { var ids = api.getAppState().selectedElementIds || {}; return liveEls().filter(function (el) { return ids[el.id]; }); }
+
+  function applyToScene(ids, fn) {
+    var next = api.getSceneElements().map(function (el) { return ids[el.id] ? fn(el) : el; });
+    try { api.updateScene({ elements: next }); } catch (e) {}
+  }
+  function setHiddenFor(els, hidden) {
+    if (!els.length) return;
+    var ids = {}; els.forEach(function (e) { ids[e.id] = true; });
+    applyToScene(ids, function (el) {
+      var cd = {}; for (var k in (el.customData || {})) cd[k] = el.customData[k];
+      if (hidden) { cd.dovHidden = true; if (cd.dovPrevOpacity == null) cd.dovPrevOpacity = (el.opacity != null ? el.opacity : 100); var n1 = {}; for (var a in el) n1[a] = el[a]; n1.opacity = 0; n1.locked = true; n1.customData = cd; return n1; }
+      var op = cd.dovPrevOpacity != null ? cd.dovPrevOpacity : 100; delete cd.dovHidden; delete cd.dovPrevOpacity;
+      var n2 = {}; for (var b in el) n2[b] = el[b]; n2.opacity = op; n2.locked = false; n2.customData = cd; return n2;
     });
-  });
+  }
+  function selectEls(els) {
+    if (!els || !els.length) { toast("אין אובייקטים מתאימים"); return; }
+    var vis = els.filter(function (e) { return !isHidden(e); });
+    if (!vis.length) { toast("האובייקטים מוסתרים — הצג אותם קודם 👁"); return; }
+    var ids = {}; vis.forEach(function (e) { ids[e.id] = true; });
+    setDrawMode(false);
+    try { api.setActiveTool({ type: "selection" }); } catch (e) {}
+    try { api.updateScene({ appState: { selectedElementIds: ids } }); } catch (e) {}
+    try { api.scrollToContent(vis, { fitToContent: true, animate: true }); } catch (e) {}
+  }
+  function jumpTo(el) {
+    var as0 = api.getAppState(); navBack = { scrollX: as0.scrollX, scrollY: as0.scrollY, zoom: as0.zoom };
+    try { api.scrollToContent([el], { fitToContent: true, animate: true }); } catch (e) { try { api.scrollToContent([el]); } catch (e2) {} }
+    toast("קפצתי לאובייקט — 🧭 ↩ יחזיר אותך");
+  }
+  function createGroupFromSelection(rerender) {
+    var sel = panelSelectedEls();
+    if (sel.length < 1) { toast("סמן קודם אובייקטים (🎯 או על הקנבס) כדי לקבץ"); return; }
+    var gid = newGroupId();
+    dovMeta.groups[gid] = { name: "קבוצה " + hhmm(), folderId: "__none__" };
+    var ids = {}; sel.forEach(function (e) { ids[e.id] = true; });
+    applyToScene(ids, function (el) { var g = (el.groupIds || []).slice(); g.push(gid); var n = {}; for (var k in el) n[k] = el[k]; n.groupIds = g; return n; });
+    metaChanged(); toast("✅ נוצרה קבוצה: " + dovMeta.groups[gid].name);
+    if (rerender) rerender();
+  }
+  function ungroup(gid, rerender) {
+    var ids = {}; liveEls().forEach(function (el) { if ((el.groupIds || []).indexOf(gid) !== -1) ids[el.id] = true; });
+    applyToScene(ids, function (el) { var n = {}; for (var k in el) n[k] = el[k]; n.groupIds = (el.groupIds || []).filter(function (x) { return x !== gid; }); return n; });
+    delete dovMeta.groups[gid]; metaChanged(); if (rerender) rerender();
+  }
+  function moveSelectedToFolder(fid, rerender) {
+    var sel = panelSelectedEls();
+    if (!sel.length) { toast("סמן אובייקטים כדי להעביר לתיקייה"); return; }
+    var loneIds = {};
+    sel.forEach(function (el) { var gid = elGroupId(el); if (gid) { ensureGroupMeta(gid); dovMeta.groups[gid].folderId = fid; } else { loneIds[el.id] = true; } });
+    if (Object.keys(loneIds).length) {
+      applyToScene(loneIds, function (el) { var cd = {}; for (var k in (el.customData || {})) cd[k] = el.customData[k]; cd.dovFolder = fid; var n = {}; for (var a in el) n[a] = el[a]; n.customData = cd; return n; });
+    }
+    metaChanged(); toast("📂 הועבר"); if (rerender) rerender();
+  }
+
+  // ---- capture group while drawing ----
+  var captureGroupId = null;
+  var captureKnownIds = null;
+  var captureTimer = null;
+  function startCaptureGroup() {
+    if (!api) return;
+    captureGroupId = newGroupId();
+    dovMeta.groups[captureGroupId] = { name: "כתב " + hhmm(), folderId: "__none__" };
+    captureKnownIds = {};
+    try { liveEls().forEach(function (el) { captureKnownIds[el.id] = true; }); } catch (e) {}
+    metaChanged();
+    toast("✍️ כתיבה לתוך קבוצה חדשה: " + dovMeta.groups[captureGroupId].name);
+  }
+  function stopCaptureGroup() { captureGroupId = null; captureKnownIds = null; }
+  function scheduleCapture() { if (!captureGroupId) return; clearTimeout(captureTimer); captureTimer = setTimeout(assignCapture, 350); }
+  function assignCapture() {
+    if (!captureGroupId || !api) return;
+    var changed = false;
+    var next = api.getSceneElements().map(function (el) {
+      if (el.isDeleted) return el;
+      if (captureKnownIds[el.id]) return el;
+      var g = el.groupIds || [];
+      if (g.indexOf(captureGroupId) !== -1) { captureKnownIds[el.id] = true; return el; }
+      if (g.length > 0) { captureKnownIds[el.id] = true; return el; }
+      captureKnownIds[el.id] = true; changed = true;
+      var n = {}; for (var k in el) n[k] = el[k]; n.groupIds = [captureGroupId].concat(g); return n;
+    });
+    if (changed) { try { api.updateScene({ elements: next }); } catch (e) {} }
+  }
+  function toggleCaptureGroup(btn) {
+    if (captureGroupId) { stopCaptureGroup(); if (btn) btn.classList.remove("act"); toast("⏹ הקבוצה נסגרה — כתיבה רגילה"); }
+    else { if (!drawOn) setDrawMode(true); startCaptureGroup(); if (btn) btn.classList.add("act"); }
+  }
+
+  // ---- small UI builders ----
+  function mkRow() { var r = document.createElement("div"); r.style.cssText = "display:flex;align-items:center;gap:4px;padding:3px 0;font-size:13px;"; return r; }
+  function iconBtn(txt, title, fn) { var b = document.createElement("button"); b.textContent = txt; b.title = title || ""; b.style.cssText = "border:1px solid #e3e2de;background:#fff;border-radius:6px;cursor:pointer;width:30px;height:28px;font-size:14px;flex:none;"; b.addEventListener("click", fn); return b; }
+  function txtBtn(txt, title, fn) { var b = document.createElement("button"); b.textContent = txt; b.title = title || txt; b.style.cssText = "border:1px solid #d3d1cb;background:#fff;border-radius:8px;cursor:pointer;padding:5px 9px;font-size:12.5px;flex:none;"; b.addEventListener("click", fn); return b; }
+
+  function askName(title, cur, cb) {
+    dovModal(title, function (box, close) {
+      var inp = document.createElement("input"); inp.type = "text"; inp.value = cur || "";
+      inp.style.cssText = "width:100%;box-sizing:border-box;border:1px solid #d3d1cb;border-radius:6px;padding:7px 9px;font-size:14px;direction:rtl;";
+      box.appendChild(inp);
+      var row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;margin-top:10px;";
+      var ok = txtBtn("שמור", "", function () { var v = inp.value.trim(); close(); cb(v); });
+      ok.style.background = "#0b6e99"; ok.style.color = "#fff"; ok.style.borderColor = "#0b6e99";
+      var cancel = txtBtn("ביטול", "", function () { close(); });
+      row.appendChild(ok); row.appendChild(cancel); box.appendChild(row);
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { var v = inp.value.trim(); close(); cb(v); } });
+      setTimeout(function () { try { inp.focus(); } catch (e) {} }, 60);
+    });
+  }
+
+  function aggRow(label, els, rerender) {
+    var row = mkRow();
+    var allHidden = els.every(function (e) { return isHidden(e); });
+    var nm = document.createElement("span"); nm.textContent = (allHidden ? "🙈 " : "") + label + " ×" + els.length; nm.style.cssText = "flex:1;" + (allHidden ? "opacity:.5;" : "");
+    row.appendChild(nm);
+    row.appendChild(iconBtn("🎯", "בחירת הכל", function () { selectEls(els); }));
+    row.appendChild(iconBtn(allHidden ? "👁" : "🙈", allHidden ? "הצג הכל" : "הסתר הכל", function () { setHiddenFor(els, !allHidden); rerender(); }));
+    return row;
+  }
+  function objRow(el, rerender, close) {
+    var row = mkRow();
+    var tk = elTypeKey(el);
+    var label = TYPE_LABELS[tk] || "•";
+    if (tk === "text") { var t = (el.text || el.originalText || "").replace(/\s+/g, " ").trim(); label = "🅰 " + (t ? (t.length > 36 ? t.slice(0, 36) + "…" : t) : "טקסט"); }
+    else if (tk === "doc" || tk === "sheet" || tk === "canvas" || tk === "embed") { var pe = el.link ? parseEmbed(el.link) : null; label = TYPE_LABELS[tk].split(" ")[0] + " " + (pe ? pe.name : "הטמעה"); }
+    var hid = isHidden(el);
+    var nm = document.createElement("span"); nm.textContent = (hid ? "🙈 " : "") + label; nm.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" + (hid ? "opacity:.5;" : "");
+    row.appendChild(nm);
+    row.appendChild(iconBtn("↗", "מעבר לאובייקט", function () { jumpTo(el); close(); }));
+    row.appendChild(iconBtn("🎯", "בחירה", function () { selectEls([el]); }));
+    row.appendChild(iconBtn(hid ? "👁" : "🙈", hid ? "הצג" : "הסתר", function () { setHiddenFor([el], !hid); rerender(); }));
+    return row;
+  }
+  function renderBucket(container, bucketEls, rerender, close) {
+    var pen = bucketEls.filter(function (e) { return elTypeKey(e) === "pen"; });
+    var marker = bucketEls.filter(function (e) { return elTypeKey(e) === "marker"; });
+    var others = bucketEls.filter(function (e) { var k = elTypeKey(e); return k !== "pen" && k !== "marker"; });
+    if (pen.length) container.appendChild(aggRow("✏️ עט", pen, rerender));
+    if (marker.length) container.appendChild(aggRow("🖍️ מרקר", marker, rerender));
+    others.forEach(function (el) { container.appendChild(objRow(el, rerender, close)); });
+  }
+
+  function renderPanel(container, close, rerender) {
+    var els = liveEls();
+    if (navBack) {
+      var bb = txtBtn("↩︎ חזרה לתצוגה הקודמת", "", function () { try { api.updateScene({ appState: { scrollX: navBack.scrollX, scrollY: navBack.scrollY, zoom: navBack.zoom } }); } catch (e) {} navBack = null; close(); });
+      bb.style.display = "block"; bb.style.width = "100%"; bb.style.marginBottom = "8px"; bb.style.borderColor = "#0b6e99";
+      container.appendChild(bb);
+    }
+    if (!els.length) { var em = document.createElement("p"); em.textContent = "הקנבס ריק עדיין."; em.style.cssText = "color:#787774;font-size:13px;"; container.appendChild(em); return; }
+
+    var typesPresent = {}; els.forEach(function (e) { var k = elTypeKey(e); typesPresent[k] = (typesPresent[k] || 0) + 1; });
+    var chipWrap = document.createElement("div"); chipWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;";
+    function chip(key, label, count) {
+      var b = document.createElement("button"); b.textContent = label + (count != null ? " (" + count + ")" : "");
+      var on = objFilter === key;
+      b.style.cssText = "border:1px solid " + (on ? "#0b6e99" : "#d3d1cb") + ";background:" + (on ? "#e7f3f8" : "#fff") + ";border-radius:14px;cursor:pointer;padding:4px 10px;font-size:12.5px;flex:none;";
+      b.addEventListener("click", function () { objFilter = key; rerender(); });
+      return b;
+    }
+    chipWrap.appendChild(chip("all", "הכל", els.length));
+    Object.keys(TYPE_LABELS).forEach(function (k) { if (typesPresent[k]) chipWrap.appendChild(chip(k, TYPE_LABELS[k], typesPresent[k])); });
+    container.appendChild(chipWrap);
+
+    var actWrap = document.createElement("div"); actWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;";
+    actWrap.appendChild(txtBtn("📁 תיקייה חדשה", "", function () { askName("שם התיקייה", "תיקייה " + (Object.keys(dovMeta.folders).length + 1), function (v) { var fid = newFolderId(); dovMeta.folders[fid] = { name: v || ("תיקייה " + (Object.keys(dovMeta.folders).length + 1)) }; metaChanged(); rerender(); }); }));
+    actWrap.appendChild(txtBtn("🧷 קבץ מסומן", "צור קבוצה מהאובייקטים המסומנים", function () { createGroupFromSelection(rerender); }));
+    var mv = document.createElement("select"); mv.style.cssText = "border:1px solid #d3d1cb;border-radius:8px;padding:5px 8px;font-size:12.5px;direction:rtl;";
+    var op0 = document.createElement("option"); op0.value = ""; op0.textContent = "📂 העבר מסומן ל…"; mv.appendChild(op0);
+    var opN = document.createElement("option"); opN.value = "__none__"; opN.textContent = "ללא תיקייה"; mv.appendChild(opN);
+    Object.keys(dovMeta.folders).forEach(function (fid) { var o = document.createElement("option"); o.value = fid; o.textContent = dovMeta.folders[fid].name; mv.appendChild(o); });
+    mv.addEventListener("change", function () { if (mv.value !== "") moveSelectedToFolder(mv.value, rerender); });
+    actWrap.appendChild(mv);
+    container.appendChild(actWrap);
+
+    var colors = {}; els.forEach(function (e) { if (!isHidden(e)) { var col = e.strokeColor || "#1e1e1e"; colors[col] = (colors[col] || 0) + 1; } });
+    var colorKeys = Object.keys(colors);
+    if (colorKeys.length) {
+      var cWrap = document.createElement("div"); cWrap.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;";
+      var lbl = document.createElement("span"); lbl.textContent = "בחר לפי צבע:"; lbl.style.cssText = "font-size:12.5px;color:#787774;"; cWrap.appendChild(lbl);
+      colorKeys.forEach(function (col) {
+        var sw = document.createElement("button"); sw.title = "בחר הכל בצבע זה (" + colors[col] + ")";
+        sw.style.cssText = "width:24px;height:24px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #d3d1cb;cursor:pointer;flex:none;background:" + col + ";";
+        sw.addEventListener("click", function () { selectEls(els.filter(function (e) { return (e.strokeColor || "#1e1e1e") === col; })); });
+        cWrap.appendChild(sw);
+      });
+      container.appendChild(cWrap);
+    }
+
+    var shown = els.filter(function (e) { return objFilter === "all" || elTypeKey(e) === objFilter; });
+    var folderIds = ["__none__"].concat(Object.keys(dovMeta.folders));
+    folderIds.forEach(function (fid) {
+      var inFolder = shown.filter(function (e) { return elFolder(e) === fid; });
+      var groupMap = {}; var lone = [];
+      inFolder.forEach(function (e) { var gid = elGroupId(e); if (gid) { (groupMap[gid] = groupMap[gid] || []).push(e); } else { lone.push(e); } });
+      var gids = Object.keys(groupMap);
+      var hasContent = gids.length || lone.length;
+      if (objFilter !== "all" && !hasContent) return;
+      var folderName = fid === "__none__" ? "🗂 ללא תיקייה" : ("📁 " + (dovMeta.folders[fid] ? dovMeta.folders[fid].name : "תיקייה"));
+
+      var fHead = document.createElement("div"); fHead.style.cssText = "display:flex;align-items:center;gap:5px;margin-top:8px;padding:5px 6px;background:#f7f7f5;border-radius:7px;font-weight:700;font-size:13px;";
+      var fKey = "f:" + fid; var fCollapsed = !!objCollapsed[fKey];
+      var fTog = iconBtn(fCollapsed ? "▸" : "▾", "פתח/סגור", function () { objCollapsed[fKey] = !objCollapsed[fKey]; rerender(); }); fTog.style.width = "26px";
+      fHead.appendChild(fTog);
+      var fNm = document.createElement("span"); fNm.textContent = folderName; fNm.style.flex = "1"; fHead.appendChild(fNm);
+      fHead.appendChild(iconBtn("🎯", "בחר הכל בתיקייה", function () { selectEls(inFolder); }));
+      if (fid !== "__none__") {
+        fHead.appendChild(iconBtn("✏️", "שנה שם", function () { askName("שם התיקייה", dovMeta.folders[fid].name, function (v) { if (v) dovMeta.folders[fid].name = v; metaChanged(); rerender(); }); }));
+        fHead.appendChild(iconBtn("🗑", "מחק תיקייה (התוכן יחזור לללא-תיקייה)", function () {
+          gids.forEach(function (g) { ensureGroupMeta(g); dovMeta.groups[g].folderId = "__none__"; });
+          var loneIds = {}; lone.forEach(function (e) { loneIds[e.id] = true; });
+          if (Object.keys(loneIds).length) applyToScene(loneIds, function (el) { var cd = {}; for (var k in (el.customData || {})) cd[k] = el.customData[k]; delete cd.dovFolder; var n = {}; for (var a in el) n[a] = el[a]; n.customData = cd; return n; });
+          delete dovMeta.folders[fid]; metaChanged(); rerender();
+        }));
+      }
+      container.appendChild(fHead);
+      if (fCollapsed) return;
+
+      var fBody = document.createElement("div"); fBody.style.cssText = "padding-right:10px;"; container.appendChild(fBody);
+
+      gids.forEach(function (gid) {
+        var gEls = groupMap[gid];
+        var gKey = "g:" + gid; var gCollapsed = !!objCollapsed[gKey];
+        var gHead = document.createElement("div"); gHead.style.cssText = "display:flex;align-items:center;gap:5px;margin-top:5px;padding:4px 6px;background:#eef3f6;border-radius:6px;font-size:12.5px;font-weight:600;";
+        var gTog = iconBtn(gCollapsed ? "▸" : "▾", "פתח/סגור", function () { objCollapsed[gKey] = !objCollapsed[gKey]; rerender(); }); gTog.style.width = "26px";
+        gHead.appendChild(gTog);
+        var gNm = document.createElement("span"); gNm.textContent = "👥 " + groupName(gid) + " (" + gEls.length + ")"; gNm.style.flex = "1"; gHead.appendChild(gNm);
+        gHead.appendChild(iconBtn("🎯", "בחר קבוצה", function () { selectEls(gEls); }));
+        gHead.appendChild(iconBtn("✏️", "שנה שם", function () { askName("שם הקבוצה", groupName(gid), function (v) { if (v) { ensureGroupMeta(gid); dovMeta.groups[gid].name = v; metaChanged(); rerender(); } }); }));
+        gHead.appendChild(iconBtn("✂️", "פירוק קבוצה", function () { ungroup(gid, rerender); }));
+        fBody.appendChild(gHead);
+        if (!gCollapsed) { var gBody = document.createElement("div"); gBody.style.cssText = "padding-right:12px;"; fBody.appendChild(gBody); renderBucket(gBody, gEls, rerender, close); }
+      });
+      if (lone.length) renderBucket(fBody, lone, rerender, close);
+    });
+  }
+
+  function openObjPanel() {
+    if (!api) { toast("הקנבס עוד נטען…"); return; }
+    dovModal("🧭 מנהל האובייקטים", function (box, close) {
+      var body = document.createElement("div"); box.appendChild(body);
+      function rerender() { body.innerHTML = ""; renderPanel(body, close, rerender); }
+      rerender();
+    });
+  }
+  var railListBtn = document.getElementById("railList");
+  if (railListBtn) railListBtn.addEventListener("click", openObjPanel);
 
   // ===== פאנל עיצוב מהיר: כל הגדרות האובייקט ישירות מהסרגל =====
   var stylePanel = document.createElement("div");
