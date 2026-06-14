@@ -140,7 +140,6 @@
   }
   window.addEventListener("error", function (e) {
     var m = (e && e.message) || "";
-    // שגיאות חוצות-מקור מהטמעות (סקריפטים מ-CDN בתוך iframe) מגיעות כ-"Script error." בלי פרטים — רעש, מתעלמים
     if (!m || m.toLowerCase().indexOf("script error") >= 0) return;
     dovErr(m);
   });
@@ -297,7 +296,6 @@
   }
 
   // ===== הטמעת ווידג'טים בתוך הקנבס + מצב מיקוד =====
-  // מזהה אם קישור מצביע לאחד הווידג'טים שלנו (אותו מקור) — רק אלה מקבלים iframe עם הרשאות מלאות
   function isOwnWidget(link) {
     try {
       var u = new URL(link, location.href);
@@ -312,7 +310,6 @@
   function widgetIcon(type) {
     return type === "sheet" ? "📊" : type === "canvas" ? "🎨" : "📝";
   }
-  // בונה כתובת מלאה לווידג'ט, כולל מזהה מרחב (כדי שההטמעה תתחבר לענן)
   function buildDocUrl(type, id) {
     var path = location.pathname;
     var base = location.origin + path.slice(0, path.lastIndexOf("/") + 1);
@@ -320,7 +317,6 @@
     try { if (window.dovCloud && dovCloud.spaceId()) url += "&space=" + encodeURIComponent(dovCloud.spaceId()); } catch (e) {}
     return url;
   }
-  // מפענח קישור הטמעה חזרה לפרטי הקובץ
   function parseEmbed(link) {
     try {
       var u = new URL(link, location.href);
@@ -331,37 +327,77 @@
       return { id: id, type: type, name: rec ? rec.name : (id || "הטמעה") };
     } catch (e) { return { id: null, type: "markdown", name: link }; }
   }
-  // יצירת אלמנט embeddable — קודם דרך ה-API הרשמי, ובגיבוי בנייה ידנית
+  // מחזיר כתובת נקייה למסך מלא (ללא embed) — כך הווידג'ט נראה בדיוק כמו המקור
+  function cleanUrl(link) {
+    try { var u = new URL(link, location.href); u.searchParams.delete("embed"); return u.toString(); }
+    catch (e) { return link; }
+  }
   function makeEmbeddable(x, y, w, h, link) {
+    var out = null;
     try {
       var conv = ExcalidrawLib.convertToExcalidrawElements([{ type: "embeddable", x: x, y: y, width: w, height: h, link: link }]);
-      if (conv && conv.length && conv[0].type === "embeddable") return conv;
+      if (conv && conv.length && conv[0].type === "embeddable") out = conv;
     } catch (e) {}
-    function rint() { return Math.floor(Math.random() * 2147483647); }
-    return [{
-      id: "emb-" + Date.now() + "-" + Math.random().toString(16).slice(2),
-      type: "embeddable", x: x, y: y, width: w, height: h, angle: 0,
-      strokeColor: "#1e1e1e", backgroundColor: "transparent", fillStyle: "solid",
-      strokeWidth: 2, strokeStyle: "solid", roughness: 1, opacity: 100,
-      groupIds: [], frameId: null, roundness: null, seed: rint(),
-      version: 1, versionNonce: rint(), isDeleted: false, boundElements: null,
-      updated: Date.now(), link: link, locked: false
-    }];
+    if (!out) {
+      var rint = function () { return Math.floor(Math.random() * 2147483647); };
+      out = [{
+        id: "emb-" + Date.now() + "-" + Math.random().toString(16).slice(2),
+        type: "embeddable", x: x, y: y, width: w, height: h, angle: 0,
+        strokeColor: "#1e1e1e", backgroundColor: "transparent", fillStyle: "solid",
+        strokeWidth: 2, strokeStyle: "solid", roughness: 1, opacity: 100,
+        groupIds: [], frameId: null, roundness: null, seed: rint(),
+        version: 1, versionNonce: rint(), isDeleted: false, boundElements: null,
+        updated: Date.now(), link: link, locked: false
+      }];
+    }
+    // קריטי: validated=true מבטיח שה-iframe יצויר מיד (לפי renderEmbeddables בקוד המקור של Excalidraw)
+    out.forEach(function (el) { el.validated = true; });
+    return out;
   }
-  function embedDoc(type, id) {
+  var EMB_W = 760, EMB_H = 520;
+  // מניחה הטמעה שמרכזה בנקודת סצנה נתונה
+  function placeEmbedAt(type, id, sceneCx, sceneCy) {
     if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
     try {
       var url = buildDocUrl(type, id);
-      var as = api.getAppState();
-      var z = (as.zoom && as.zoom.value) || 1;
-      var w = 760, h = 520;
-      var cx = -as.scrollX + (as.width / 2) / z - w / 2;
-      var cy = -as.scrollY + (as.height / 2) / z - h / 2;
-      var els = makeEmbeddable(cx, cy, w, h, url);
+      var els = makeEmbeddable(sceneCx - EMB_W / 2, sceneCy - EMB_H / 2, EMB_W, EMB_H, url);
       api.updateScene({ elements: api.getSceneElements().concat(els) });
       scheduleSave();
-      toast("✓ ההטמעה נוספה — לחיצה כפולה כדי לעבוד בתוכה, או 🎯 למיקוד");
+      toast("✓ ההטמעה נוספה — לחיצה על מרכזה כדי לעבוד בתוכה");
     } catch (e) { dovErr("הוספת הטמעה נכשלה: " + e.message); }
+  }
+  // הטמעה במרכז המסך הנוכחי
+  function embedDoc(type, id) {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    var as = api.getAppState();
+    var z = (as.zoom && as.zoom.value) || 1;
+    placeEmbedAt(type, id, -as.scrollX + (as.width / 2) / z, -as.scrollY + (as.height / 2) / z);
+  }
+  // מצב "בחר מיקום בעכבר": הלחיצה הבאה על הקנבס תניח שם את ההטמעה
+  function startPlace(type, id) {
+    if (!api) { toast("הקנבס עדיין נטען — נסה שוב בעוד רגע"); return; }
+    var root = document.getElementById("canvasRoot");
+    var ov = document.createElement("div");
+    ov.id = "placeOverlay";
+    ov.style.cssText = "position:fixed;top:0;left:0;bottom:0;right:46px;z-index:90000;cursor:crosshair;background:rgba(11,110,153,0.05);";
+    var hint = document.createElement("div");
+    hint.style.cssText = "position:absolute;top:14px;left:50%;transform:translateX(-50%);background:#0b6e99;color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,0.2);white-space:nowrap;";
+    hint.textContent = "🖱️ לחץ במקום שבו להניח את ההטמעה · Esc לביטול";
+    ov.appendChild(hint);
+    function cleanup() { document.removeEventListener("keydown", onKey); if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    function onKey(e) { if (e.key === "Escape") cleanup(); }
+    ov.addEventListener("click", function (e) {
+      var rect = root.getBoundingClientRect();
+      var as = api.getAppState();
+      var z = (as.zoom && as.zoom.value) || 1;
+      var sceneCx = (e.clientX - rect.left) / z - as.scrollX;
+      var sceneCy = (e.clientY - rect.top) / z - as.scrollY;
+      cleanup();
+      placeEmbedAt(type, id, sceneCx, sceneCy);
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(ov);
+    toast("🖱️ לחץ על הקנבס כדי למקם את ההטמעה");
   }
   // ה-renderer שלנו ל-iframe: מעניק allow-same-origin (שExcalidraw חוסם בהטמעות) — וכך הווידג'ט באמת עובד
   function dovRenderEmbeddable(element) {
@@ -397,7 +433,7 @@
         var b = document.createElement("button");
         b.className = "primary";
         b.textContent = t[1];
-        b.addEventListener("click", function () { var d = createDoc(t[0], null); embedDoc(t[0], d.id); close(); });
+        b.addEventListener("click", function () { var d = createDoc(t[0], null); startPlace(t[0], d.id); close(); });
         r.appendChild(b);
       });
       box.appendChild(r);
@@ -428,7 +464,7 @@
           var b = document.createElement("button");
           b.className = "dovListItem";
           b.textContent = widgetIcon(d.type) + " " + (d.name || "ללא שם");
-          b.addEventListener("click", function () { embedDoc(d.type, d.id); close(); });
+          b.addEventListener("click", function () { startPlace(d.type, d.id); close(); });
           list.appendChild(b);
         });
       }
@@ -454,7 +490,7 @@
     x.addEventListener("click", close);
     document.addEventListener("keydown", onKey);
     var frame = document.createElement("iframe");
-    frame.src = link;
+    frame.src = cleanUrl(link);
     frame.style.cssText = "flex:1;border:0;width:100%;min-height:0;";
     frame.setAttribute("allow", "clipboard-read; clipboard-write; fullscreen");
     bar.appendChild(ttl);
@@ -476,7 +512,8 @@
       var ecx = el.x + el.width / 2, ecy = el.y + el.height / 2;
       var scrollX = vw / (2 * z) - ecx;
       var scrollY = vh / (2 * z) - ecy;
-      api.updateScene({ appState: { scrollX: scrollX, scrollY: scrollY, zoom: { value: z } } });
+      // מבטלים את מצב "פעיל" כדי שאפשר יהיה לגרור ולהזיז כרגיל
+      api.updateScene({ appState: { scrollX: scrollX, scrollY: scrollY, zoom: { value: z }, activeEmbeddable: null } });
     } catch (e) { dovErr("זום נכשל: " + e.message); }
   }
   function openFocusModal() {
@@ -521,6 +558,19 @@
   }
   document.getElementById("railEmbed").addEventListener("click", openEmbedModal);
   document.getElementById("railFocus").addEventListener("click", openFocusModal);
+  // הקשבה להודעות מתוך הווידג'טים המוטמעים (כפתורי נעילה/זום שבתוכם)
+  window.addEventListener("message", function (ev) {
+    var d = ev && ev.data;
+    if (!d || d.source !== "dov-widget" || !d.id) return;
+    var el = listEmbeds().filter(function (e) {
+      try { return new URL(e.link, location.href).searchParams.get("id") === d.id; } catch (x) { return false; }
+    })[0];
+    if (!el) return;
+    var pe = parseEmbed(el.link);
+    if (d.action === "focus") openFocus(el.link, pe.name);
+    else if (d.action === "zoom") zoomEmbedMax(el);
+    else if (d.action === "near") zoomEmbedNear(el);
+  });
 
   // ===== העתקת קישור (clipboard חסום בהטמעה — execCommand קודם) =====
   function copyText(t, okMsg) {
@@ -1249,6 +1299,34 @@
       });
     } catch (e) { console.error(e); }
   })();
+</script>
+<script>
+(function () {
+  // כאשר העמוד רץ כהטמעה (embed=1) — מוסיף סרגל צף קטן עם נעילה/זום ששולח הודעה לקנבס המארח
+  try {
+    var p = new URLSearchParams(location.search);
+    if (p.get("embed") !== "1") return;
+    var myId = p.get("id") || "";
+    function send(action) { try { parent.postMessage({ source: "dov-widget", action: action, id: myId }, "*"); } catch (e) {} }
+    var bar = document.createElement("div");
+    bar.id = "dovEmbedBar";
+    bar.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:2147483000;display:flex;gap:4px;background:rgba(15,123,108,0.92);padding:3px 6px;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:inherit;";
+    function mk(label, title, action) {
+      var b = document.createElement("button");
+      b.textContent = label; b.title = title;
+      b.style.cssText = "border:0;background:transparent;color:#fff;cursor:pointer;font-size:14px;padding:2px 7px;border-radius:10px;line-height:1.2;";
+      b.addEventListener("mouseenter", function () { b.style.background = "rgba(255,255,255,0.2)"; });
+      b.addEventListener("mouseleave", function () { b.style.background = "transparent"; });
+      b.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); send(action); });
+      return b;
+    }
+    bar.appendChild(mk("🔒", "מסך מלא — עבודה כמו על הקובץ המקורי", "focus"));
+    bar.appendChild(mk("🔳", "זום מקסימלי בקנבס", "zoom"));
+    bar.appendChild(mk("🔎", "קירוב בקנבס", "near"));
+    function add() { if (document.body) { document.body.appendChild(bar); } else { setTimeout(add, 200); } }
+    add();
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>

@@ -180,7 +180,6 @@
 
   window.addEventListener("error", (e) => {
     const m = (e && e.message) || "";
-    // שגיאות חוצות-מקור (סקריפטים מ-CDN) מגיעות כ-"Script error." בלי פרטים — מתעלמים מרעש כזה
     if (!m || m.toLowerCase().indexOf("script error") >= 0) return;
     if (saveStatus) saveStatus.textContent = "⚠️ שגיאה: " + m;
   });
@@ -1313,6 +1312,34 @@
     } catch (e) { console.error(e); }
   })();
 
+</script>
+<script>
+(function () {
+  // כאשר העמוד רץ כהטמעה (embed=1) — מוסיף סרגל צף קטן עם נעילה/זום ששולח הודעה לקנבס המארח
+  try {
+    var p = new URLSearchParams(location.search);
+    if (p.get("embed") !== "1") return;
+    var myId = p.get("id") || "";
+    function send(action) { try { parent.postMessage({ source: "dov-widget", action: action, id: myId }, "*"); } catch (e) {} }
+    var bar = document.createElement("div");
+    bar.id = "dovEmbedBar";
+    bar.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:2147483000;display:flex;gap:4px;background:rgba(15,123,108,0.92);padding:3px 6px;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:inherit;";
+    function mk(label, title, action) {
+      var b = document.createElement("button");
+      b.textContent = label; b.title = title;
+      b.style.cssText = "border:0;background:transparent;color:#fff;cursor:pointer;font-size:14px;padding:2px 7px;border-radius:10px;line-height:1.2;";
+      b.addEventListener("mouseenter", function () { b.style.background = "rgba(255,255,255,0.2)"; });
+      b.addEventListener("mouseleave", function () { b.style.background = "transparent"; });
+      b.addEventListener("click", function (ev) { ev.preventDefault(); ev.stopPropagation(); send(action); });
+      return b;
+    }
+    bar.appendChild(mk("🔒", "מסך מלא — עבודה כמו על הקובץ המקורי", "focus"));
+    bar.appendChild(mk("🔳", "זום מקסימלי בקנבס", "zoom"));
+    bar.appendChild(mk("🔎", "קירוב בקנבס", "near"));
+    function add() { if (document.body) { document.body.appendChild(bar); } else { setTimeout(add, 200); } }
+    add();
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
