@@ -389,7 +389,10 @@
   viewerRootEl.addEventListener("dblclick", () => { setMode("edit"); editor.focus(); });
 
   // ===== שמירה, שם, הורדה, הסתרת סרגל =====
+  let mdApplyingRemote = false, mdLastEditAt = 0, mdLiveUnsub = null;
   editor.on("change", () => {
+    if (mdApplyingRemote) return;
+    mdLastEditAt = Date.now();
     saveStatus.textContent = "שומר...";
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
@@ -407,6 +410,64 @@
     }
     saveStatus.textContent = "נשמר ✓";
   });
+
+  // ===== מצב לייב: סנכרון חי בין מכשירים — עדכון במקום, בלי רענון דף =====
+  function syncMdLocal(c) {
+    try {
+      window.dovStore.putDoc({
+        id: docId, type: "markdown", name: c.name || getDoc(docId).name,
+        content: c.content || "", data: null, folderId: c.folderId || null,
+        links: c.links || [], created: c.created || nowIso(), updated: c.updated || ""
+      });
+    } catch (e) {}
+  }
+  function applyRemoteMd(c) {
+    if (!c || c.deleted) return;
+    const remote = c.content || "";
+    const pm = getProseMirror();
+    const typing = (currentMode !== "view") && pm && document.activeElement && pm.contains(document.activeElement);
+    if (mdApplyingRemote || typing || (Date.now() - mdLastEditAt < 2500)) { setTimeout(() => applyRemoteMd(c), 1500); return; }
+    let cur = "";
+    try { cur = editor.getMarkdown(); } catch (e) {}
+    if (remote === cur) { syncMdLocal(c); return; }
+    mdApplyingRemote = true;
+    setTimeout(() => { mdApplyingRemote = false; }, 600);
+    try {
+      editor.setMarkdown(remote, false);
+      refreshViewer();
+      syncMdLocal(c);
+      saveStatus.textContent = "עודכן מהענן 🔄";
+    } catch (e) {}
+  }
+  function setMdLive(on) {
+    const lb = document.getElementById("dovLiveBtn");
+    if (on) {
+      if (!docId) return;
+      if (!window.dovCloud || !dovCloud.isReady || !dovCloud.isReady() || typeof dovCloud.watchDoc !== "function") { saveStatus.textContent = "צריך סנכרון ענן כדי להפעיל לייב"; return; }
+      if (mdLiveUnsub) return;
+      mdLiveUnsub = dovCloud.watchDoc(docId, applyRemoteMd);
+      if (lb) lb.classList.add("on");
+      try { localStorage.setItem("dov-md-live", "1"); } catch (e) {}
+      saveStatus.textContent = "מצב לייב פעיל 🔴";
+    } else {
+      if (mdLiveUnsub) { try { mdLiveUnsub(); } catch (e) {} mdLiveUnsub = null; }
+      if (lb) lb.classList.remove("on");
+      try { localStorage.setItem("dov-md-live", "0"); } catch (e) {}
+      saveStatus.textContent = "מצב לייב כבוי";
+    }
+  }
+  (function buildLiveBtn() {
+    const st = document.createElement("style");
+    st.textContent = "#dovLiveBtn{position:fixed;bottom:14px;left:14px;z-index:60;border:1px solid #d3d1cb;background:#fff;border-radius:14px;cursor:pointer;padding:4px 11px;font-size:12.5px;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.14);}#dovLiveBtn.on{border-color:#e03e3e;background:#fdecec;animation:dovLivePulse 1.6s infinite;}@keyframes dovLivePulse{0%,100%{box-shadow:0 1px 4px rgba(0,0,0,.14);}50%{box-shadow:0 0 0 3px rgba(224,62,62,.35);}}";
+    document.head.appendChild(st);
+    const b = document.createElement("button");
+    b.id = "dovLiveBtn";
+    b.textContent = "🔴 לייב";
+    b.title = "מצב לייב — שינויים ממכשירים אחרים יופיעו כאן מיד (בלי לרענן)";
+    b.addEventListener("click", () => setMdLive(!mdLiveUnsub));
+    document.body.appendChild(b);
+    setTimeout(() => { try { if (localStorage.getItem("dov-md-live") === "1" && docId && window.dovCloud && dovCloud.isReady && dovCloud.isReady()) setMdLive(true); } catch (e) {} }, 1400);
+  })();
 
   function setToolbarHidden(hidden) {
     document.body.classList.toggle("toolbar-hidden", hidden);
@@ -1333,64 +1394,6 @@
     bar.appendChild(mk("🔎", "קירוב בקנבס", "near"));
     function add() { if (document.body) { document.body.appendChild(bar); } else { setTimeout(add, 200); } }
     add();
-  } catch (e) {}
-})();
-</script>
-<script>
-(function () {
-  // מצב לייב — סנכרון מיידי בין מכשירים (מתג). משמר מקומית וטוען מחדש — לא דורס תוך כדי הקלדה
-  try {
-    var cid = new URLSearchParams(location.search).get("id");
-    var TYPE = "markdown";
-    var LS_KEY = "dov-md-live";
-    var liveUnsub = null;
-    var lastEditAt = 0;
-    function bump() { lastEditAt = Date.now(); }
-    document.addEventListener("keydown", bump, true);
-    document.addEventListener("input", bump, true);
-    var style = document.createElement("style");
-    style.textContent = "#dovLiveBtn.on{border-color:#e03e3e !important;background:#fdecec !important;animation:dovLivePulse 1.6s infinite;}@keyframes dovLivePulse{0%,100%{box-shadow:0 1px 4px rgba(0,0,0,.14);}50%{box-shadow:0 0 0 3px rgba(224,62,62,.35);}}";
-    document.head.appendChild(style);
-    var btn = document.createElement("button");
-    btn.id = "dovLiveBtn";
-    btn.style.cssText = "position:fixed;bottom:14px;left:14px;z-index:2147482000;border:1px solid #d3d1cb;background:#fff;border-radius:14px;cursor:pointer;padding:4px 11px;font-size:12.5px;font-family:inherit;box-shadow:0 1px 4px rgba(0,0,0,.14);";
-    btn.textContent = "🔴 לייב";
-    btn.title = "מצב לייב — שינויים ממכשירים אחרים יופיעו כאן מיד";
-    function info(msg) { var s = document.getElementById("saveStatus"); if (s) s.textContent = msg; }
-    function localDocFromCloud(c) {
-      var data = null;
-      try { data = c.dataJson ? JSON.parse(c.dataJson) : null; } catch (e) {}
-      return { id: cid, type: c.type || TYPE, name: c.name || "", content: c.content || "", data: data, folderId: c.folderId || null, links: c.links || [], created: c.created || "", updated: c.updated || "" };
-    }
-    function onRemote(c) {
-      if (!c || c.deleted) return;
-      if (Date.now() - lastEditAt < 2500 || document.hidden) { setTimeout(function () { onRemote(c); }, 2000); return; }
-      try { if (window.dovStore && window.dovStore.putDoc) window.dovStore.putDoc(localDocFromCloud(c)); } catch (e) {}
-      try { if (window.dovCloud && dovCloud.flush) dovCloud.flush(); } catch (e) {}
-      try { sessionStorage.removeItem("dov-cloud-reload-" + cid); } catch (e) {}
-      setTimeout(function () { location.reload(); }, 250);
-    }
-    function setLive(on) {
-      if (on) {
-        if (!cid) { info("שמור את הקובץ כדי להפעיל לייב"); return; }
-        if (!window.dovCloud || !dovCloud.isReady || !dovCloud.isReady()) { info("צריך סנכרון ענן כדי להפעיל לייב"); return; }
-        if (typeof dovCloud.watchDoc !== "function") { info("גרסת הענן לא תומכת בלייב"); return; }
-        if (liveUnsub) return;
-        liveUnsub = dovCloud.watchDoc(cid, onRemote);
-        btn.classList.add("on");
-        try { localStorage.setItem(LS_KEY, "1"); } catch (e) {}
-        info("מצב לייב פעיל 🔴");
-      } else {
-        if (liveUnsub) { try { liveUnsub(); } catch (e) {} liveUnsub = null; }
-        btn.classList.remove("on");
-        try { localStorage.setItem(LS_KEY, "0"); } catch (e) {}
-        info("מצב לייב כבוי");
-      }
-    }
-    btn.addEventListener("click", function () { setLive(!liveUnsub); });
-    function mount() { if (document.body) document.body.appendChild(btn); else setTimeout(mount, 200); }
-    mount();
-    setTimeout(function () { try { if (localStorage.getItem(LS_KEY) === "1" && cid && window.dovCloud && dovCloud.isReady && dovCloud.isReady()) setLive(true); } catch (e) {} }, 1400);
   } catch (e) {}
 })();
 </script>

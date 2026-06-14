@@ -276,7 +276,7 @@
       langCode: "he-IL",
       validateEmbeddable: true,
       renderEmbeddable: dovRenderEmbeddable,
-      onChange: function () { lastLocalEditAt = Date.now(); scheduleSave(); },
+      onChange: function () { if (applyingRemote) return; lastLocalEditAt = Date.now(); scheduleSave(); },
       UIOptions: { canvasActions: { loadScene: false } }
     };
     var App = function () {
@@ -585,6 +585,8 @@
   var curTool = "freedraw";
   var drawPalette = null, drawSelTool = null, drawOn = false;
   var lastLocalEditAt = 0;
+  var applyingRemote = false;
+  var lastRemoteContent = "";
   function penW() { return DRAW_STEPS[penIdx]; }
   function applyTool() {
     if (!api) return;
@@ -673,12 +675,16 @@
   // ===== מצב לייב: סנכרון מיידי בין מכשירים =====
   var liveUnsub = null;
   function applyRemoteCanvas(c) {
-    if (!api || !c || c.deleted) return;
+    if (!api || !c || c.deleted || applyingRemote) return;
     if (Date.now() - lastLocalEditAt < 1500) { setTimeout(function () { applyRemoteCanvas(c); }, 1200); return; }
     try {
+      if (c.content && c.content === lastRemoteContent) return;
       var data = c.content ? JSON.parse(c.content) : null;
       if (!data || !data.elements) return;
+      lastRemoteContent = c.content;
       if (data.views) dovViews = data.views;
+      applyingRemote = true;
+      setTimeout(function () { applyingRemote = false; }, 700);
       api.updateScene({ elements: data.elements, files: data.files || {} });
       try { lastSig = contentSig(snapshotCanvas()); } catch (e) {}
       try {
@@ -688,7 +694,7 @@
           links: c.links || [], created: c.created || docRec.created, updated: c.updated || ""
         });
       } catch (e) {}
-      toast("עודכן מהענן 🔄");
+      try { if (statusEl) { statusEl.textContent = "עודכן מהענן 🔄"; statusEl.style.color = "#0b6e99"; } } catch (e) {}
     } catch (e) {}
   }
   function setLive(on) {
